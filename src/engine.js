@@ -16,7 +16,7 @@ function key(row, col) {
   return `${row},${col}`;
 }
 
-function cellsForPlacement(row, col, length, orientation) {
+export function cellsForPlacement(row, col, length, orientation) {
   const cells = [];
   for (let i = 0; i < length; i++) {
     cells.push(
@@ -37,7 +37,7 @@ function inBounds(cell, size) {
  * ship of the given length on a board of the given size, given a set of
  * already-occupied cell keys. "Legal" = fully in-bounds, no overlap.
  */
-function enumerateLegalPlacements(length, size, occupied) {
+export function enumerateLegalPlacements(length, size, occupied) {
   const placements = [];
   for (const orientation of ["horizontal", "vertical"]) {
     for (let row = 0; row < size; row++) {
@@ -92,17 +92,104 @@ function placeFleet(size) {
   }
 }
 
-function createBoard(size) {
+function createBoard(size, ships = placeFleet(size)) {
   return {
     size,
-    ships: placeFleet(size),
+    ships,
     shotsReceived: new Set(),
   };
 }
 
-export function createGame() {
+/**
+ * Builds a random but legal fleet layout in the `[{ id, length, cells }]`
+ * shape `createGame` accepts, for seeding or re-rolling manual placement.
+ */
+export function randomFleetLayout(size = BOARD_SIZE) {
+  return placeFleet(size).map((ship) => ({
+    id: ship.id,
+    length: ship.length,
+    cells: ship.cells.map((c) => ({ ...c })),
+  }));
+}
+
+/**
+ * Validates a proposed fleet layout: exactly the FLEET ships, each a
+ * straight, contiguous, in-bounds run of its own length, with no overlaps.
+ * Returns `{ valid, error }` rather than throwing so callers (the placement
+ * UI) can surface the reason.
+ */
+export function validateFleetLayout(layout, size = BOARD_SIZE) {
+  if (!Array.isArray(layout) || layout.length !== FLEET.length) {
+    return { valid: false, error: `Expected ${FLEET.length} ships.` };
+  }
+
+  const occupied = new Set();
+  for (const { id, length } of FLEET) {
+    const ship = layout.find((s) => s && s.id === id);
+    if (!ship) return { valid: false, error: `Missing the ${id}.` };
+    if (!Array.isArray(ship.cells) || ship.cells.length !== length) {
+      return { valid: false, error: `The ${id} must cover ${length} cells.` };
+    }
+    if (!ship.cells.every((c) => c && inBounds(c, size))) {
+      return { valid: false, error: `The ${id} is off the board.` };
+    }
+
+    const rows = new Set(ship.cells.map((c) => c.row));
+    const cols = new Set(ship.cells.map((c) => c.col));
+    const orientation =
+      rows.size === 1 ? "horizontal" : cols.size === 1 ? "vertical" : null;
+    if (!orientation) {
+      return { valid: false, error: `The ${id} must sit in a straight line.` };
+    }
+    const start = ship.cells.reduce((a, b) =>
+      a.row + a.col <= b.row + b.col ? a : b
+    );
+    const expected = cellsForPlacement(start.row, start.col, length, orientation);
+    const actual = new Set(ship.cells.map((c) => key(c.row, c.col)));
+    if (!expected.every((c) => actual.has(key(c.row, c.col)))) {
+      return { valid: false, error: `The ${id} must occupy adjacent cells.` };
+    }
+
+    for (const cell of ship.cells) {
+      const cellKey = key(cell.row, cell.col);
+      if (occupied.has(cellKey)) {
+        return { valid: false, error: `The ${id} overlaps another ship.` };
+      }
+      occupied.add(cellKey);
+    }
+  }
+
+  return { valid: true, error: null };
+}
+
+function shipsFromLayout(layout) {
+  return FLEET.map(({ id, length }) => {
+    const ship = layout.find((s) => s.id === id);
+    return {
+      id,
+      length,
+      cells: ship.cells.map((c) => ({ ...c })),
+      hits: new Set(),
+      sunk: false,
+    };
+  });
+}
+
+/**
+ * Creates a new game. The player's fleet is randomly placed unless
+ * `playerFleetLayout` supplies a layout (the manual placement phase); an
+ * invalid layout throws, since continuing would corrupt the board.
+ */
+export function createGame(playerFleetLayout = null) {
+  let playerShips;
+  if (playerFleetLayout) {
+    const { valid, error } = validateFleetLayout(playerFleetLayout, BOARD_SIZE);
+    if (!valid) throw new Error(`Invalid fleet layout: ${error}`);
+    playerShips = shipsFromLayout(playerFleetLayout);
+  }
+
   return {
-    playerBoard: createBoard(BOARD_SIZE),
+    playerBoard: createBoard(BOARD_SIZE, playerShips),
     aiBoard: createBoard(BOARD_SIZE),
     turn: "player",
     status: "in_progress",

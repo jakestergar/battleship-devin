@@ -297,6 +297,119 @@ Outcome** (filled in once known).
 - **Outcome:** PR #2 closed with an explanatory comment, branch deleted.
   `main` is unaffected — still the #3 + Decision 16 implementation.
 
+### 18. Manual fleet placement, fleet rosters, firing animations, synthesized audio
+- **Rationale:** Playtest feedback (with reference screenshots of the classic
+  HTML5 Battleship) flagged four gaps against the PRD's "feels like a real
+  game" bar: the player couldn't choose where their ships go, there was no
+  readable view of which of their ships were still afloat, no feedback when
+  a target was selected, and no sound. Kept the fixes in their own layers:
+  the placement layout lives only in `src/ui.js` and is handed to the engine
+  as `createGame(layout)`, so `GameState` gains no "placing" status and the
+  engine stays a pure rules module.
+- **Assessment: Good decision, with one deliberate trade-off.** Music and
+  effects are synthesized with the Web Audio API rather than shipped as
+  audio files — it keeps the repo asset-free and GitHub Pages-friendly and
+  avoids licensing questions, at the cost of an ambient drone rather than a
+  scored soundtrack. Every audio and animation entry point is guarded, so a
+  browser without Web Audio (or with autoplay blocked) still plays a fully
+  functional, silent game. Manual placement is click-to-place plus rotate /
+  randomize / clear rather than drag-and-drop: fewer failure modes on touch
+  and with the keyboard, and it matches the reference panel's controls.
+- **Outcome:** New `src/audio.js`; engine gained `randomFleetLayout`,
+  `validateFleetLayout`, and the optional `createGame(layout)` argument;
+  `src/ui.js` gained the placement phase, per-ship hull rosters for both
+  fleets, and reticle/splash/explosion animations. 25/25 tests passing,
+  verified end-to-end in a live browser preview.
+
 ---
 
 *(New decisions get appended below as they're made.)*
+
+### 16. Frame boards with shared coordinate axes and hull-shaped segments
+
+The UI now wraps each board in a shared `.board-frame` rather than adding
+coordinate labels into the board's 100-cell grid. This keeps labels aligned
+with the existing cell and gap dimensions, while framing the player
+`.board-stack` preserves the heatmap's absolute overlay relationship. Ship
+segments use directional classes from the existing UI helper, with CSS-only
+metallic/deployment hull treatments so hidden enemy ships remain untouched.
+
+**Assessment: Good decision.** The labels are structural siblings of each
+board, so the grid's cell indexing and event handling remain unchanged. The
+only visual risk is narrow-screen overflow, which matches the existing fixed
+cell sizing and can be addressed separately if responsive behavior is needed.
+
+### 17. Adopt the BATTLESTATION design system for the whole visual layer
+
+Replaced the improvised blue/teal palette with the supplied BATTLESTATION
+system: `src/tokens.css` for the abyss/hull/phosphor/brass/klaxon palette and
+the three type roles (Big Shoulders Stencil headers, JetBrains Mono for
+coordinates and data, IBM Plex Sans for body copy), `src/animations.css` for
+motion, and `src/animations.js` for the effect helpers. The system's two-accent
+rule is the reason it works: **phosphor** means live/active (radar, hover,
+primary actions), **brass** means ownership and structure (your ships,
+dividers), and **klaxon** is reserved *exclusively* for hit and sunk, so red
+never stops meaning "alarm". Every board state is legible without colour —
+miss is a dot with a ripple, hit is a `✕`, sunk is a `☠`.
+
+The supplied package's `SPEC.md` lists `tokens.css`, `tokens.json`, and
+`animations.css` as included files, but the archive only contained `SPEC.md`,
+`animations.js`, and `reference.html`. The token values and keyframes were
+extracted from the inline styles in `reference.html` rather than invented, so
+the vendored files match the reference exactly.
+
+The fire-control chain is the one place this touched turn flow. A shot now
+resolves through `engine.fireAt` *before* the missile flies, but the resulting
+state is only committed once the missile lands. That ordering matters: the
+engine still decides the outcome, animation timing can't change it, and a
+browser without `Element.animate()` gets an instant shot instead of a stalled
+turn (`launchMissile` invokes its arrival callback immediately, and
+`flyMissile` additionally guards with a timeout backstop).
+
+**Assessment: Good decision, one deliberate deviation.** Per SPEC, a shot
+originates from a real hull segment on your own board — the un-sunk ship cell
+closest to the gap between the boards — not a floating launcher. The AI's
+incoming missile could not do the same thing: launching it from an enemy ship
+cell would leak the hidden enemy layout, which the AI brief explicitly forbids.
+It launches from the enemy board's edge on the target's row instead, which
+reads correctly and reveals nothing. The other deviation is that ships stay
+hull silhouettes with a bow and stern rather than SPEC's one-brass-square-per-
+cell: brass ownership is preserved, but a carrier still reads as a single
+five-cell vessel, which earlier playtest feedback specifically asked for.
+
+### 18. Draw the fleet as SVG vessels rather than importing ship artwork
+
+Playtest feedback was blunt: "i want my waters to show literal boats." The
+offer on the table was PNG artwork, and the honest answer was that PNG is the
+wrong format for this board. Cells are 40px, so a raster ship is either soft on
+a high-DPI screen or a 4x asset shipped for no reason; the cell size can never
+change again; and — the deciding factor — a damaged hull has to recolour, which
+with sprites means a second red copy of every ship. So `src/ships.js` draws
+each class instead: one SVG authored bow-right in a `length * 100` by `100`
+viewBox, hull plus superstructure, no files to source and nothing binary in a
+repo that deploys to GitHub Pages.
+
+Two structural constraints shaped the implementation. First, a vessel has to
+span all of its cells as one object, so it is drawn on a `.fleet-art` overlay
+rather than per cell — and that overlay must be a *sibling* of the board, since
+`cellElAt` indexes the board's children positionally as its 100 cells. Second,
+the art cannot bury the game state: the overlay sits above the cells but below
+the hit and sunk marks, so a struck segment still shows its klaxon `✕` on top
+of the hull. Ship boxes are measured off the live cell elements instead of
+recomputed from the cell/gap tokens, which is why bumping `--cell` from 34px to
+40px (for detail legibility) needed no changes to the art code. A vertical ship
+reuses the bow-right drawing rotated a quarter turn about its centre, which
+lands exactly inside the transposed footprint.
+
+Detail is budgeted to the size it renders at: each class is distinguished by
+one silhouette-level cue (the carrier's full-length flight deck, the
+battleship's three turrets, the submarine's capsule hull and conning tower) and
+the 2-cell destroyer deliberately carries less furniture than the others,
+because at ~80px anything more turns to mush.
+
+**Assessment: Good decision.** It replaces the previous per-cell hull
+silhouettes, which the same feedback round had called "nothing cool". Two
+things to keep honest: fair information is unchanged — enemy vessels are drawn
+only once `sunk`, which the player already knows — and the layer is additive,
+wrapped so that a failure leaves the cell states, which convey ship/hit/miss/
+sunk on their own, as the fallback.
