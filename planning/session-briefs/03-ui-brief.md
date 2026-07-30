@@ -19,7 +19,7 @@ single, clearly-marked integration point once it's available — leave a
 `// TODO(integration): swap mock for real ai.chooseMove` comment at that
 exact call site so it's a one-line change later.
 
-Repo: [INSERT PUBLIC GITHUB REPO URL]
+Repo: https://github.com/jakestergar/battleship-devin
 Branch: create your own branch off `main`, open a PR when done.
 Stack: plain HTML/CSS/JavaScript, no framework, no new dependencies, no
 build step — this must run by opening `index.html` directly / via GitHub

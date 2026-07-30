@@ -15,7 +15,7 @@ rules, and validation. Do not build any UI, AI decision-making, or rendering
 — those are separate sessions that will build against the exact interface
 you produce here.
 
-Repo: [INSERT PUBLIC GITHUB REPO URL ONCE CREATED]
+Repo: https://github.com/jakestergar/battleship-devin
 Stack: plain HTML/CSS/JavaScript, no framework, no build tooling, no backend.
 Target file(s): `src/engine.js` (or equivalent — use clean ES module
 structure, your call on exact file layout within `src/engine/`).

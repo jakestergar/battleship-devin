@@ -29,7 +29,7 @@ the real contract (pick a random unattacked cell, return a plausible
 `confidence`/`explanation`) until the real module is available, with a
 clearly marked integration point to swap it in.
 
-Repo: [INSERT PUBLIC GITHUB REPO URL]
+Repo: https://github.com/jakestergar/battleship-devin
 Branch: create your own branch off `main`, open a PR when done.
 Runtime: Node.js (no DOM/browser dependency — the engine and AI modules
 must not require one either; if you find they do, flag it in your PR, don't

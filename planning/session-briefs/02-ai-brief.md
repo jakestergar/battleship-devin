@@ -14,7 +14,7 @@ on `main` — read `src/engine.js` (or wherever it landed) to see the exact
 Your job is ONLY the AI's targeting logic — do not modify the engine, build
 UI, or touch the playtest harness; those are separate parallel workstreams.
 
-Repo: [INSERT PUBLIC GITHUB REPO URL]
+Repo: https://github.com/jakestergar/battleship-devin
 Branch: create your own branch off `main`, open a PR when done.
 Stack: plain JavaScript, no framework, no new dependencies.
 Target file(s): `src/ai.js` (or `src/ai/` — your call on internal layout).
