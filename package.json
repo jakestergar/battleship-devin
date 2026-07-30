@@ -1,0 +1,11 @@
+{
+  "name": "battleship-devin",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Single-player Battleship with a Bayesian Search Theory AI opponent",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "harness": "node scripts/harness.js"
+  }
+}
