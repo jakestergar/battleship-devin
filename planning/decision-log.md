@@ -208,6 +208,41 @@ Outcome** (filled in once known).
   fuzzed over 200 games, no-op behavior, sunk detection, isGameOver/status
   agreement, purity). AI/UI/harness sessions are now unblocked.
 
+### 14. AI derives all knowledge from history, never from unsunk ships' cells
+- **Rationale:** `GameState.playerBoard.ships[].cells` is visible to any
+  module (the engine needs it to resolve hits), so the AI could trivially
+  cheat. `src/ai.js` therefore reconstructs its own view of the board from
+  fair information only: `shotsReceived`, the AI-authored entries in
+  `state.history` (hit/miss/sunk), and the `cells` of ships that are already
+  sunk (fair — sinking reveals a ship's layout).
+- **Assessment: Good decision, and worth testing explicitly.** The
+  constraint is invisible in normal play, so it's the kind of thing that
+  silently rots. Locked it in with a test that mutates every unsunk ship's
+  `cells` to a bogus location while keeping shots/history identical and
+  asserts the probability map is byte-identical.
+- **Outcome:** Fair-information boundary is enforced by a test, not just a
+  comment.
+
+### 15. Hit "targeting mode" is a weight multiplier, not a separate code path
+- **Rationale:** Classic Battleship AIs switch between a "hunt" mode and a
+  "target" mode. Instead, placements that cover an unresolved hit (a hit not
+  belonging to any sunk ship) have their contribution multiplied by `100^N`
+  for N covered hits inside the same enumeration pass.
+- **Assessment: Good decision.** One code path instead of two means no mode
+  transitions to get wrong, and the behaviour that emerges is strictly
+  better than adjacency targeting: the boost naturally prefers cells that
+  extend a hit *along its established axis*, and stacks superlinearly when a
+  placement explains two known hits at once. It also keeps
+  `probabilityMapSnapshot` meaningful for the heatmap in every phase.
+- **Risk noted:** `100^N` grows fast, so weights are large integers rather
+  than probabilities; `confidence` is reported as `peak / sum(weights)`,
+  which keeps it in 0-1 and makes hunt shots read as low-confidence and
+  finishing shots as high-confidence. It is a decision-concentration
+  measure, not a calibrated probability, and shouldn't be described as one.
+- **Outcome:** Measured over 200 headless games, the AI clears a board in
+  **~44 shots on average** (vs ~95 for random search). The harness will
+  produce the authoritative baseline number for the UI.
+
 ---
 
 *(New decisions get appended below as they're made.)*
