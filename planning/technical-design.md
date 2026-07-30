@@ -139,6 +139,17 @@ copy) the design:
   and `src/animations.js` (DOM effect helpers). `animations.js` holds no
   game state and no rules — it only positions, spawns, and cleans up
   decorative nodes, so the UI can call it freely or not at all.
+- Vessels are drawn by `src/ships.js`: `shipSvg(id, length) -> string`, one
+  SVG per ship class authored bow-right in a `length * 100` by `100` viewBox.
+  It is pure markup generation — no DOM, no state, no rules — and returns `""`
+  for an unknown id so a fleet change can't break rendering. The UI draws
+  those on a `.fleet-art` overlay that is a *sibling* of the board, never a
+  child: the board's children are indexed positionally as its cells. Ship
+  boxes are measured off the live cell elements, and a vertically placed ship
+  reuses the bow-right drawing rotated a quarter turn. The overlay sits above
+  the cells but below the hit/sunk marks, so damage still reads on top of a
+  hull; if any of it fails, the cell states alone still convey the board.
+  Enemy vessels are drawn only once `sunk` — never before.
 - On player click: resolves the shot through `engine.fireAt` first, then
   flies the missile, and only commits `state` + re-renders once the missile
   lands. The shot's outcome is therefore decided by the engine, never by

@@ -4,7 +4,7 @@
 
 :root {
   --grid: 10;
-  --cell: 34px;
+  --cell: 40px;
   --gap: 3px;
 }
 
@@ -281,65 +281,126 @@ body {
 }
 
 /* Ship — visible only on your own board, in brass: brass means ownership.
-   Drawn as a continuous hull with a rounded bow and stern rather than one
-   square per cell, so a carrier reads as a single five-cell vessel. */
+   The cell itself is just the berth: the vessel is drawn over the top of it
+   on the fleet-art layer, one drawing per ship rather than one per cell. */
 .cell.is-ship {
   background: var(--hull-2);
   border-color: var(--brass-dim);
 }
 
-.cell.ship-seg {
-  z-index: 1;
-  border: 0;
-  border-radius: 0;
-  background:
-    linear-gradient(
-      90deg,
-      transparent 42%,
-      rgba(255, 255, 255, 0.22) 48%,
-      rgba(255, 255, 255, 0.22) 52%,
-      transparent 58%
-    ),
-    linear-gradient(180deg, #e2b862, var(--brass) 48%, var(--brass-dim));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 245, 220, 0.55),
-    inset 0 -2px 0 rgba(10, 20, 32, 0.5);
+/* ---- Fleet art ----
+   Vessels are drawn on an overlay above the board and below the damage
+   marks, so a hit still reads as a klaxon ✕ on top of the hull. */
+
+.fleet-art {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
 }
 
-.cell.ship-seg.ship-v {
-  background:
-    linear-gradient(
-      0deg,
-      transparent 42%,
-      rgba(255, 255, 255, 0.22) 48%,
-      rgba(255, 255, 255, 0.22) 52%,
-      transparent 58%
-    ),
-    linear-gradient(90deg, #e2b862, var(--brass) 48%, var(--brass-dim));
+.ship-figure {
+  position: absolute;
+  color: var(--brass);
+  filter: drop-shadow(0 2px 3px rgba(3, 9, 16, 0.75));
 }
 
-.cell.ship-seg.ship-h.ship-bow {
-  border-radius: 12px 2px 2px 12px;
+.ship-art {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
 }
 
-.cell.ship-seg.ship-h.ship-stern {
-  border-radius: 2px 12px 12px 2px;
+/* A vertical ship reuses the bow-right drawing: size it long-edge-first, then
+   turn it a quarter turn about its own centre, which lands it exactly inside
+   the transposed footprint. */
+.ship-figure-v > .ship-art {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--ship-long);
+  height: var(--ship-short);
+  transform: translate(-50%, -50%) rotate(90deg);
 }
 
-.cell.ship-seg.ship-v.ship-bow {
-  border-radius: 12px 12px 2px 2px;
+/* Hull plating is brass — ownership — and everything mounted on it is either
+   pale brass (superstructure catching light) or gunmetal (deck, guns). */
+.ship-hull {
+  fill: var(--brass);
+  stroke: #5c4419;
+  stroke-width: 2.5;
 }
 
-.cell.ship-seg.ship-v.ship-stern {
-  border-radius: 2px 2px 12px 12px;
+.ship-deck,
+.ship-flightdeck {
+  fill: #33424f;
+  stroke: #5c4419;
+  stroke-width: 2;
 }
 
-/* A damaged hull segment keeps its silhouette but takes the klaxon wash,
-   so you can still read the ship under the damage. */
-.cell.ship-seg.is-hit,
-.cell.ship-seg.is-sunk {
-  background: linear-gradient(180deg, rgba(232, 67, 46, 0.85), #8d2f1c);
-  box-shadow: inset 0 1px 0 rgba(255, 138, 61, 0.5);
+.ship-runway {
+  stroke: rgba(255, 245, 220, 0.8);
+  stroke-width: 5;
+  fill: none;
+}
+
+.ship-deckline {
+  stroke: rgba(20, 30, 40, 0.55);
+  stroke-width: 5;
+  fill: none;
+}
+
+.ship-tower,
+.ship-island {
+  fill: #f0d69b;
+  stroke: #5c4419;
+  stroke-width: 2;
+}
+
+.ship-funnel {
+  fill: #22303c;
+  stroke: #f0d69b;
+  stroke-width: 2;
+}
+
+.ship-turret {
+  fill: #f0d69b;
+  stroke: #2a2115;
+  stroke-width: 2;
+}
+
+.ship-barrel,
+.ship-mast {
+  fill: #1b262f;
+}
+
+/* Damage recolours the vessel itself — the single biggest reason these are
+   drawings and not sprites. */
+.ship-figure.is-damaged .ship-hull {
+  fill: #b4592e;
+}
+
+.ship-figure.is-sunk {
+  opacity: 0.6;
+  filter: drop-shadow(0 0 6px rgba(232, 67, 46, 0.5));
+}
+
+.ship-figure.is-sunk .ship-hull {
+  fill: #6b2a19;
+}
+
+.ship-figure.is-sunk .ship-tower,
+.ship-figure.is-sunk .ship-island,
+.ship-figure.is-sunk .ship-turret,
+.ship-figure.is-sunk .ship-funnel {
+  fill: #47251a;
+}
+
+/* Damage marks sit above the vessel. */
+.cell.is-hit,
+.cell.is-sunk {
+  z-index: 3;
 }
 
 .cell.is-latest {
@@ -356,6 +417,7 @@ body {
 .heatmap {
   position: absolute;
   inset: 0;
+  z-index: 4;
   display: grid;
   grid-template-columns: repeat(var(--grid), var(--cell));
   grid-template-rows: repeat(var(--grid), var(--cell));
@@ -598,6 +660,12 @@ body {
   border: 1px solid currentColor;
   border-radius: 2px;
   font-size: 10px;
+}
+
+/* The preview has to stay legible over a vessel already sitting there. */
+.cell.preview-ok,
+.cell.preview-bad {
+  z-index: 3;
 }
 
 .cell.preview-ok {

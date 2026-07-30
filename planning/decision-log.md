@@ -376,3 +376,40 @@ reads correctly and reveals nothing. The other deviation is that ships stay
 hull silhouettes with a bow and stern rather than SPEC's one-brass-square-per-
 cell: brass ownership is preserved, but a carrier still reads as a single
 five-cell vessel, which earlier playtest feedback specifically asked for.
+
+### 18. Draw the fleet as SVG vessels rather than importing ship artwork
+
+Playtest feedback was blunt: "i want my waters to show literal boats." The
+offer on the table was PNG artwork, and the honest answer was that PNG is the
+wrong format for this board. Cells are 40px, so a raster ship is either soft on
+a high-DPI screen or a 4x asset shipped for no reason; the cell size can never
+change again; and — the deciding factor — a damaged hull has to recolour, which
+with sprites means a second red copy of every ship. So `src/ships.js` draws
+each class instead: one SVG authored bow-right in a `length * 100` by `100`
+viewBox, hull plus superstructure, no files to source and nothing binary in a
+repo that deploys to GitHub Pages.
+
+Two structural constraints shaped the implementation. First, a vessel has to
+span all of its cells as one object, so it is drawn on a `.fleet-art` overlay
+rather than per cell — and that overlay must be a *sibling* of the board, since
+`cellElAt` indexes the board's children positionally as its 100 cells. Second,
+the art cannot bury the game state: the overlay sits above the cells but below
+the hit and sunk marks, so a struck segment still shows its klaxon `✕` on top
+of the hull. Ship boxes are measured off the live cell elements instead of
+recomputed from the cell/gap tokens, which is why bumping `--cell` from 34px to
+40px (for detail legibility) needed no changes to the art code. A vertical ship
+reuses the bow-right drawing rotated a quarter turn about its centre, which
+lands exactly inside the transposed footprint.
+
+Detail is budgeted to the size it renders at: each class is distinguished by
+one silhouette-level cue (the carrier's full-length flight deck, the
+battleship's three turrets, the submarine's capsule hull and conning tower) and
+the 2-cell destroyer deliberately carries less furniture than the others,
+because at ~80px anything more turns to mush.
+
+**Assessment: Good decision.** It replaces the previous per-cell hull
+silhouettes, which the same feedback round had called "nothing cool". Two
+things to keep honest: fair information is unchanged — enemy vessels are drawn
+only once `sunk`, which the player already knows — and the layer is additive,
+wrapped so that a failure leaves the cell states, which convey ship/hit/miss/
+sunk on their own, as the fallback.

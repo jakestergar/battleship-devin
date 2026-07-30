@@ -12,6 +12,7 @@ import {
   validateFleetLayout,
 } from "./engine.js";
 import { chooseMove as realChooseMove } from "./ai.js";
+import { shipSvg } from "./ships.js";
 import {
   initAudio,
   isMuted,
@@ -223,40 +224,104 @@ function shipCellState(board, cell) {
   return { hasShip: true, sunk: ship.sunk };
 }
 
-const SHIP_SHAPE_CLASSES = [
-  "ship-seg",
-  "ship-h",
-  "ship-v",
-  "ship-bow",
-  "ship-stern",
-];
-
 /**
- * Classes that turn a plain cell into one segment of a drawn hull: which way
- * the ship runs and whether this cell is its bow, stern, or midsection, so
- * CSS can round the ends into a ship silhouette. Returns `null` off-ship.
+ * Whether a ship lies along a row (a single-cell ship counts as horizontal).
  */
-function shipShapeClasses(ships, row, col) {
-  const ship = ships.find((s) =>
-    s.cells.some((c) => c.row === row && c.col === col)
-  );
-  if (!ship) return null;
-  const horizontal =
-    ship.cells.length === 1 || ship.cells.every((c) => c.row === ship.cells[0].row);
-  const ordered = [...ship.cells].sort((a, b) =>
-    horizontal ? a.col - b.col : a.row - b.row
-  );
-  const index = ordered.findIndex((c) => c.row === row && c.col === col);
-  const classes = ["ship-seg", horizontal ? "ship-h" : "ship-v"];
-  if (index === 0) classes.push("ship-bow");
-  if (index === ordered.length - 1) classes.push("ship-stern");
-  return classes;
+export function isHorizontal(ship) {
+  return ship.cells.length === 1 || ship.cells.every((c) => c.row === ship.cells[0].row);
 }
 
-function applyShipShape(cellEl, ships, row, col) {
-  cellEl.classList.remove(...SHIP_SHAPE_CLASSES);
-  const classes = ships ? shipShapeClasses(ships, row, col) : null;
-  if (classes) cellEl.classList.add(...classes);
+/**
+ * The pixel box a ship occupies inside its board, measured off the real cell
+ * elements rather than recomputed from the CSS cell/gap sizes — so the art
+ * stays aligned whatever those are set to. Returns `null` if the cells aren't
+ * laid out yet.
+ */
+function shipBox(boardEl, ship) {
+  let box = null;
+  for (const cell of ship.cells) {
+    const cellEl = cellElAt(boardEl, cell.row, cell.col);
+    if (!cellEl) return null;
+    const left = cellEl.offsetLeft;
+    const top = cellEl.offsetTop;
+    const right = left + cellEl.offsetWidth;
+    const bottom = top + cellEl.offsetHeight;
+    box = box
+      ? {
+          left: Math.min(box.left, left),
+          top: Math.min(box.top, top),
+          right: Math.max(box.right, right),
+          bottom: Math.max(box.bottom, bottom),
+        }
+      : { left, top, right, bottom };
+  }
+  if (!box || box.right <= box.left) return null;
+  return {
+    left: box.left,
+    top: box.top,
+    width: box.right - box.left,
+    height: box.bottom - box.top,
+  };
+}
+
+/**
+ * Draws each ship as one vessel spanning all of its cells, on an overlay above
+ * the board. A vertical ship reuses the same bow-right drawing rotated a
+ * quarter turn about its centre, which exactly fills the transposed box.
+ *
+ * Additive layer: any failure leaves the board's own cell states — which
+ * already convey ship/hit/miss/sunk on their own — as the fallback.
+ */
+function renderFleetArt(overlayEl, boardEl, ships) {
+  try {
+    if (!overlayEl) return;
+    overlayEl.textContent = "";
+    if (!ships) return;
+
+    for (const ship of ships) {
+      const box = shipBox(boardEl, ship);
+      const markup = shipSvg(ship.id, ship.cells.length);
+      if (!box || !markup) continue;
+
+      const wrap = document.createElement("div");
+      wrap.className = "ship-figure";
+      if (ship.sunk) wrap.classList.add("is-sunk");
+      else if (ship.hits?.size > 0) wrap.classList.add("is-damaged");
+      wrap.style.left = `${box.left}px`;
+      wrap.style.top = `${box.top}px`;
+      wrap.style.width = `${box.width}px`;
+      wrap.style.height = `${box.height}px`;
+      if (!isHorizontal(ship)) {
+        wrap.classList.add("ship-figure-v");
+        wrap.style.setProperty("--ship-long", `${box.height}px`);
+        wrap.style.setProperty("--ship-short", `${box.width}px`);
+      }
+      wrap.innerHTML = markup;
+      overlayEl.appendChild(wrap);
+    }
+  } catch {
+    /* decorative layer — the cell states already carry the game state */
+  }
+}
+
+/**
+ * Wraps a board in a positioned stack (if it isn't already in one) and adds
+ * the fleet-art overlay as a sibling. The overlay must not be a child of the
+ * board: the board's children are indexed positionally as the 100 cells.
+ */
+function addFleetArtLayer(boardEl) {
+  let stack = boardEl.parentElement;
+  if (!stack || !stack.classList.contains("board-stack")) {
+    stack = document.createElement("div");
+    stack.className = "board-stack";
+    boardEl.parentNode.replaceChild(stack, boardEl);
+    stack.appendChild(boardEl);
+  }
+  const overlay = document.createElement("div");
+  overlay.className = "fleet-art";
+  overlay.setAttribute("aria-hidden", "true");
+  stack.appendChild(overlay);
+  return overlay;
 }
 
 function latestAiEntry() {
@@ -275,7 +340,6 @@ function renderBoard(container, board, { revealShips }) {
     const { hasShip, sunk } = shipCellState(board, { row, col });
 
     cellEl.classList.toggle("is-ship", revealShips && hasShip && !fired);
-    applyShipShape(cellEl, revealShips && hasShip ? board.ships : null, row, col);
     cellEl.classList.toggle("is-miss", fired && !hasShip);
     cellEl.classList.toggle("is-hit", fired && hasShip && !sunk);
     cellEl.classList.toggle("is-sunk", fired && hasShip && sunk);
@@ -284,6 +348,13 @@ function renderBoard(container, board, { revealShips }) {
       Boolean(latest && latest.cell.row === row && latest.cell.col === col)
     );
   }
+  // Enemy vessels appear only once sunk, which is information the player has
+  // already been given — an unsunk enemy ship is never drawn.
+  renderFleetArt(
+    container === els.aiBoard ? els.aiFleetArt : els.playerFleetArt,
+    container,
+    revealShips ? board.ships : board.ships.filter((ship) => ship.sunk)
+  );
 }
 
 /**
@@ -774,12 +845,6 @@ function renderPlacementBoard() {
     const cellKey = key(Number(cellEl.dataset.row), Number(cellEl.dataset.col));
     const shipId = occupied.get(cellKey) ?? null;
     cellEl.classList.toggle("is-ship", Boolean(shipId));
-    applyShipShape(
-      cellEl,
-      shipId ? layout : null,
-      Number(cellEl.dataset.row),
-      Number(cellEl.dataset.col)
-    );
     cellEl.classList.remove("preview-ok", "preview-bad");
     if (shipId) {
       cellEl.dataset.shipId = shipId;
@@ -787,6 +852,7 @@ function renderPlacementBoard() {
       delete cellEl.dataset.shipId;
     }
   }
+  renderFleetArt(els.placementFleetArt, els.placementBoard, layout);
 }
 
 function renderPlacement() {
@@ -939,9 +1005,12 @@ function init() {
   buildGrid(els.playerBoard, { clickable: false, label: "Your cell" });
   buildGrid(els.placementBoard, { clickable: true, label: "Deployment cell" });
   buildHeatmapGrid();
-  frameBoard(els.aiBoard);
+  els.aiFleetArt = addFleetArtLayer(els.aiBoard);
+  els.playerFleetArt = addFleetArtLayer(els.playerBoard);
+  els.placementFleetArt = addFleetArtLayer(els.placementBoard);
+  frameBoard(els.aiBoard.parentElement);
   frameBoard(els.playerBoard.parentElement);
-  frameBoard(els.placementBoard);
+  frameBoard(els.placementBoard.parentElement);
   setUpReticle();
   initAudio();
   renderMuteButton();
