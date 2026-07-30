@@ -338,3 +338,41 @@ metallic/deployment hull treatments so hidden enemy ships remain untouched.
 board, so the grid's cell indexing and event handling remain unchanged. The
 only visual risk is narrow-screen overflow, which matches the existing fixed
 cell sizing and can be addressed separately if responsive behavior is needed.
+
+### 17. Adopt the BATTLESTATION design system for the whole visual layer
+
+Replaced the improvised blue/teal palette with the supplied BATTLESTATION
+system: `src/tokens.css` for the abyss/hull/phosphor/brass/klaxon palette and
+the three type roles (Big Shoulders Stencil headers, JetBrains Mono for
+coordinates and data, IBM Plex Sans for body copy), `src/animations.css` for
+motion, and `src/animations.js` for the effect helpers. The system's two-accent
+rule is the reason it works: **phosphor** means live/active (radar, hover,
+primary actions), **brass** means ownership and structure (your ships,
+dividers), and **klaxon** is reserved *exclusively* for hit and sunk, so red
+never stops meaning "alarm". Every board state is legible without colour —
+miss is a dot with a ripple, hit is a `✕`, sunk is a `☠`.
+
+The supplied package's `SPEC.md` lists `tokens.css`, `tokens.json`, and
+`animations.css` as included files, but the archive only contained `SPEC.md`,
+`animations.js`, and `reference.html`. The token values and keyframes were
+extracted from the inline styles in `reference.html` rather than invented, so
+the vendored files match the reference exactly.
+
+The fire-control chain is the one place this touched turn flow. A shot now
+resolves through `engine.fireAt` *before* the missile flies, but the resulting
+state is only committed once the missile lands. That ordering matters: the
+engine still decides the outcome, animation timing can't change it, and a
+browser without `Element.animate()` gets an instant shot instead of a stalled
+turn (`launchMissile` invokes its arrival callback immediately, and
+`flyMissile` additionally guards with a timeout backstop).
+
+**Assessment: Good decision, one deliberate deviation.** Per SPEC, a shot
+originates from a real hull segment on your own board — the un-sunk ship cell
+closest to the gap between the boards — not a floating launcher. The AI's
+incoming missile could not do the same thing: launching it from an enemy ship
+cell would leak the hidden enemy layout, which the AI brief explicitly forbids.
+It launches from the enemy board's edge on the target's row instead, which
+reads correctly and reveals nothing. The other deviation is that ships stay
+hull silhouettes with a bow and stern rather than SPEC's one-brass-square-per-
+cell: brass ownership is preserved, but a carrier still reads as a single
+five-cell vessel, which earlier playtest feedback specifically asked for.

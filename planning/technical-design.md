@@ -134,8 +134,22 @@ copy) the design:
 - Firing animations and audio (`src/audio.js`, Web Audio synthesis — no
   binary assets) are additive layers: every entry point is guarded so a
   failure degrades to a silent, unanimated but fully playable game.
-- On player click: calls `engine.fireAt`, then (if game not over) calls
-  `ai.chooseMove` + `engine.fireAt` for the AI's turn, then re-renders.
+- Visual language comes from the BATTLESTATION design system, split into
+  `src/tokens.css` (palette + type scale), `src/animations.css` (motion),
+  and `src/animations.js` (DOM effect helpers). `animations.js` holds no
+  game state and no rules — it only positions, spawns, and cleans up
+  decorative nodes, so the UI can call it freely or not at all.
+- On player click: resolves the shot through `engine.fireAt` first, then
+  flies the missile, and only commits `state` + re-renders once the missile
+  lands. The shot's outcome is therefore decided by the engine, never by
+  animation timing; if the Web Animations API or the layout measurement is
+  unavailable, `flyMissile` resolves immediately and the turn proceeds. Then
+  (if the game isn't over) `ai.chooseMove` + `engine.fireAt` for the AI's
+  turn, then re-renders.
+- A shot launches from a real hull segment: the player's un-sunk ship cell
+  closest to the gap between the two boards. The AI's incoming shot launches
+  from the enemy board's edge on the target's row — deliberately *not* from
+  an enemy ship, since that would leak the hidden layout.
 - Renders the heatmap overlay directly from the latest `HistoryEntry`'s
   `probabilityMapSnapshot` — if it's `null` or malformed, the overlay
   silently doesn't render (graceful degradation per NFRs); it never blocks

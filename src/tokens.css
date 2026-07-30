@@ -1,0 +1,22 @@
+/* BATTLESTATION design tokens.
+   Extracted from the design-system package (SPEC.md "Palette"/"Typography").
+
+   Two accents, not one: phosphor means live/active, brass means ownership and
+   structure. Klaxon is reserved exclusively for hit/sunk so it keeps its alarm
+   meaning — never use it for anything else. */
+:root {
+  --abyss: #0a1420;
+  --hull: #16283b;
+  --hull-2: #1e3650;
+  --phosphor: #3adb76;
+  --phosphor-dim: #1f7a45;
+  --brass: #c99a3e;
+  --brass-dim: #8a6a2a;
+  --klaxon: #e8432e;
+  --klaxon-hot: #ff8a3d;
+  --fog: #dce6ed;
+  --fog-dim: #8fa3b3;
+  --font-display: "Big Shoulders Stencil", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --font-body: "IBM Plex Sans", sans-serif;
+}

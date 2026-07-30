@@ -1,13 +1,8 @@
+/* Battleship, dressed in the BATTLESTATION design system.
+   Palette and type tokens live in tokens.css; motion lives in
+   animations.css. This file is layout plus the game's own components. */
+
 :root {
-  --deep: #071a2b;
-  --deeper: #04121f;
-  --hull: #0f2c44;
-  --hull-line: #1d4763;
-  --steel: #7f9db3;
-  --chart: #cfe3f2;
-  --sonar: #4ee1c1;
-  --flare: #ff7a59;
-  --gold: #e0b356;
   --grid: 10;
   --cell: 34px;
   --gap: 3px;
@@ -20,12 +15,12 @@
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
-  color: var(--chart);
+  font-family: var(--font-body);
+  color: var(--fog);
   background:
-    radial-gradient(circle at 20% 0%, rgba(78, 225, 193, 0.12), transparent 55%),
-    radial-gradient(circle at 85% 15%, rgba(224, 179, 86, 0.09), transparent 50%),
-    linear-gradient(180deg, var(--deep), var(--deeper));
+    radial-gradient(circle at 20% 0%, rgba(58, 219, 118, 0.1), transparent 55%),
+    radial-gradient(circle at 85% 15%, rgba(201, 154, 62, 0.08), transparent 50%),
+    var(--abyss);
 }
 
 .frame {
@@ -41,28 +36,35 @@ body {
   gap: 16px;
 }
 
+/* Display face is for headers only, never body copy. */
 .masthead h1 {
   margin: 0;
-  font-size: 34px;
-  letter-spacing: 0.22em;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 52px;
+  line-height: 0.9;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #fff;
+  color: var(--fog);
 }
 
 .subtitle {
   margin: 6px 0 0;
-  color: var(--steel);
-  font-size: 14px;
+  font-family: var(--font-mono);
+  color: var(--fog-dim);
+  font-size: 12px;
   letter-spacing: 0.08em;
 }
 
 .status-line {
   margin: 20px 0 18px;
   padding: 12px 16px;
-  border-left: 3px solid var(--sonar);
-  background: rgba(78, 225, 193, 0.08);
-  font-size: 15px;
+  border-left: 2px solid var(--phosphor);
+  background: rgba(58, 219, 118, 0.06);
+  font-family: var(--font-mono);
+  font-size: 13px;
   letter-spacing: 0.02em;
+  color: var(--phosphor);
 }
 
 .theatre[hidden] {
@@ -70,24 +72,37 @@ body {
 }
 
 .theatre {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   gap: 24px;
   align-items: flex-start;
 }
 
-.board-panel h2 {
+/* Missiles arc between the two boards, so the layer has to span both. */
+.missile-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 20;
+}
+
+.board-panel h2,
+.placement-head h2 {
   margin: 0 0 2px;
-  font-size: 15px;
-  letter-spacing: 0.18em;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 26px;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--gold);
+  color: var(--brass);
 }
 
 .board-hint {
   margin: 0 0 12px;
   font-size: 12px;
-  color: var(--steel);
+  color: var(--fog-dim);
 }
 
 .board-stack {
@@ -100,13 +115,14 @@ body {
   grid-template-rows: repeat(var(--grid), var(--cell));
   gap: var(--gap);
   padding: 10px;
-  border: 1px solid rgba(127, 157, 179, 0.35);
-  border-radius: 6px;
-  background: linear-gradient(160deg, rgba(15, 44, 68, 0.95), rgba(7, 26, 43, 0.95));
+  border: 1px solid var(--phosphor-dim);
+  border-radius: 4px;
+  background: var(--abyss);
   box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.45);
 }
 
 .board-frame {
+  position: relative;
   display: grid;
   grid-template-columns: max-content max-content;
   grid-template-rows: max-content max-content;
@@ -115,8 +131,10 @@ body {
   width: max-content;
 }
 
+/* Coordinates are the actual game mechanic, so mono here is structural. */
 .board-axis {
-  color: var(--steel);
+  font-family: var(--font-mono);
+  color: var(--fog-dim);
   font-size: 11px;
   line-height: 1;
   text-align: center;
@@ -146,15 +164,22 @@ body {
   grid-row: 2;
 }
 
+/* ---- Grid cell states ----
+   Each state is legible without relying on colour alone: every marked
+   state carries a shape or glyph as well as its hue. */
+
 .cell {
+  position: relative;
   margin: 0;
   padding: 0;
-  font: inherit;
-  border: 1px solid rgba(127, 157, 179, 0.22);
+  font-family: var(--font-mono);
+  font-size: 16px;
+  line-height: 1;
+  border: 1px solid rgba(58, 219, 118, 0.15);
   border-radius: 3px;
-  background: rgba(10, 34, 55, 0.9);
+  background: var(--hull);
   cursor: default;
-  transition: background 120ms ease, transform 120ms ease;
+  transition: border-color 150ms ease, background 150ms ease;
 }
 
 #ai-board .cell {
@@ -162,50 +187,135 @@ body {
 }
 
 #ai-board:not(.board-locked) .cell:hover {
-  background: rgba(78, 225, 193, 0.22);
-  transform: scale(1.06);
+  border-color: var(--phosphor);
+  background: var(--hull-2);
 }
 
 .board-locked {
   cursor: progress;
 }
 
-.cell.is-ship {
-  background: linear-gradient(180deg, #43607a, #2b455c);
-  border-color: rgba(207, 227, 242, 0.5);
+/* Miss — a small dot plus a pulsing ripple ring. */
+.cell.is-miss::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--fog-dim);
+  box-shadow: 0 0 0 6px rgba(220, 230, 235, 0.08);
+  animation: splash 1.8s ease-in-out infinite;
 }
 
-.cell.is-miss {
-  background: rgba(127, 157, 179, 0.18);
-  box-shadow: inset 0 0 0 6px rgba(7, 26, 43, 0.55);
+@keyframes splash {
+  0% {
+    box-shadow: 0 0 0 0 rgba(220, 230, 235, 0.35);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(220, 230, 235, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(220, 230, 235, 0);
+  }
 }
 
+/* Hit — a glowing klaxon cross that pulses. Klaxon is used nowhere else. */
 .cell.is-hit {
-  background: radial-gradient(circle, var(--flare), #8d2f1c);
+  background: rgba(232, 67, 46, 0.12);
+  border-color: var(--klaxon);
 }
 
+.cell.is-hit::after {
+  content: "\2715";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--klaxon);
+  font-weight: 700;
+  font-size: 18px;
+  animation: pulse-hit 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse-hit {
+  0%,
+  100% {
+    text-shadow: 0 0 4px rgba(232, 67, 46, 0.6);
+  }
+  50% {
+    text-shadow: 0 0 16px rgba(232, 67, 46, 1);
+  }
+}
+
+/* Sunk — darker klaxon wash, skull mark, gentle settle. */
 .cell.is-sunk {
-  background: repeating-linear-gradient(
-    45deg,
-    #5d1a12,
-    #5d1a12 4px,
-    #2d0d09 4px,
-    #2d0d09 8px
-  );
+  background: rgba(232, 67, 46, 0.22);
+  border-color: var(--klaxon);
+  animation: sink 2.4s ease-in-out infinite;
+}
+
+.cell.is-sunk::after {
+  content: "\2620";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--klaxon-hot);
+  font-size: 16px;
+}
+
+@keyframes sink {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(2px);
+    opacity: 0.7;
+  }
+}
+
+/* Ship — visible only on your own board, in brass: brass means ownership.
+   Drawn as a continuous hull with a rounded bow and stern rather than one
+   square per cell, so a carrier reads as a single five-cell vessel. */
+.cell.is-ship {
+  background: var(--hull-2);
+  border-color: var(--brass-dim);
 }
 
 .cell.ship-seg {
-  position: relative;
   z-index: 1;
-  overflow: hidden;
   border: 0;
   border-radius: 0;
   background:
-    linear-gradient(90deg, transparent 42%, rgba(207, 227, 242, 0.22) 48%, rgba(207, 227, 242, 0.22) 52%, transparent 58%),
-    linear-gradient(180deg, #6f8da3, #304c63 48%, #20394e);
+    linear-gradient(
+      90deg,
+      transparent 42%,
+      rgba(255, 255, 255, 0.22) 48%,
+      rgba(255, 255, 255, 0.22) 52%,
+      transparent 58%
+    ),
+    linear-gradient(180deg, #e2b862, var(--brass) 48%, var(--brass-dim));
   box-shadow:
-    inset 0 1px 0 rgba(207, 227, 242, 0.52),
-    inset 0 -2px 0 rgba(4, 18, 31, 0.55);
+    inset 0 1px 0 rgba(255, 245, 220, 0.55),
+    inset 0 -2px 0 rgba(10, 20, 32, 0.5);
+}
+
+.cell.ship-seg.ship-v {
+  background:
+    linear-gradient(
+      0deg,
+      transparent 42%,
+      rgba(255, 255, 255, 0.22) 48%,
+      rgba(255, 255, 255, 0.22) 52%,
+      transparent 58%
+    ),
+    linear-gradient(90deg, #e2b862, var(--brass) 48%, var(--brass-dim));
 }
 
 .cell.ship-seg.ship-h.ship-bow {
@@ -224,40 +334,23 @@ body {
   border-radius: 2px 2px 12px 12px;
 }
 
-.cell.ship-seg.ship-v {
-  background:
-    linear-gradient(0deg, transparent 42%, rgba(207, 227, 242, 0.22) 48%, rgba(207, 227, 242, 0.22) 52%, transparent 58%),
-    linear-gradient(180deg, #6f8da3, #304c63 48%, #20394e);
-}
-
-.cell.ship-seg.is-hit {
-  background:
-    linear-gradient(90deg, transparent 42%, rgba(255, 245, 214, 0.3) 48%, rgba(255, 245, 214, 0.3) 52%, transparent 58%),
-    radial-gradient(circle, var(--flare), #8d2f1c);
-}
-
+/* A damaged hull segment keeps its silhouette but takes the klaxon wash,
+   so you can still read the ship under the damage. */
+.cell.ship-seg.is-hit,
 .cell.ship-seg.is-sunk {
-  background:
-    linear-gradient(90deg, transparent 42%, rgba(255, 190, 90, 0.25) 48%, rgba(255, 190, 90, 0.25) 52%, transparent 58%),
-    repeating-linear-gradient(45deg, #5d1a12, #5d1a12 4px, #2d0d09 4px, #2d0d09 8px);
-}
-
-.cell.ship-seg.ship-v.is-hit {
-  background:
-    linear-gradient(0deg, transparent 42%, rgba(255, 245, 214, 0.3) 48%, rgba(255, 245, 214, 0.3) 52%, transparent 58%),
-    radial-gradient(circle, var(--flare), #8d2f1c);
-}
-
-.cell.ship-seg.ship-v.is-sunk {
-  background:
-    linear-gradient(0deg, transparent 42%, rgba(255, 190, 90, 0.25) 48%, rgba(255, 190, 90, 0.25) 52%, transparent 58%),
-    repeating-linear-gradient(45deg, #5d1a12, #5d1a12 4px, #2d0d09 4px, #2d0d09 8px);
+  background: linear-gradient(180deg, rgba(232, 67, 46, 0.85), #8d2f1c);
+  box-shadow: inset 0 1px 0 rgba(255, 138, 61, 0.5);
 }
 
 .cell.is-latest {
-  outline: 2px solid var(--gold);
+  outline: 2px solid var(--brass);
   outline-offset: -2px;
   cursor: help;
+}
+
+/* The cell a shot launches from, on your own board. */
+.cell.launch-point {
+  box-shadow: 0 0 0 1px var(--phosphor-dim) inset;
 }
 
 .heatmap {
@@ -280,7 +373,7 @@ body {
 .heat-tile {
   border-radius: 3px;
   opacity: 0;
-  background: linear-gradient(180deg, var(--sonar), #2f8fd0);
+  background: linear-gradient(180deg, var(--phosphor), var(--phosphor-dim));
 }
 
 .console {
@@ -293,50 +386,52 @@ body {
 
 .console-block {
   padding: 14px 16px;
-  border: 1px solid rgba(127, 157, 179, 0.28);
-  border-radius: 6px;
-  background: rgba(9, 30, 49, 0.75);
+  border: 1px solid rgba(220, 230, 235, 0.08);
+  border-radius: 4px;
+  background: var(--hull);
 }
 
 .console-block h3 {
   margin: 0 0 10px;
+  font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: var(--steel);
+  color: var(--phosphor);
 }
 
 .meter {
   height: 8px;
-  border-radius: 4px;
-  background: rgba(127, 157, 179, 0.2);
+  border-radius: 2px;
+  background: rgba(220, 230, 235, 0.12);
   overflow: hidden;
 }
 
 .meter-fill {
   height: 100%;
   width: 0;
-  background: linear-gradient(90deg, var(--sonar), var(--gold));
+  background: linear-gradient(90deg, var(--phosphor), var(--brass));
   transition: width 260ms ease;
 }
 
 .metric {
   margin: 10px 0 0;
+  font-family: var(--font-mono);
   font-size: 20px;
   letter-spacing: 0.06em;
-  color: #fff;
+  color: var(--fog);
 }
 
 .explain {
   margin: 0;
   font-size: 13px;
   line-height: 1.5;
-  color: var(--steel);
+  color: var(--fog-dim);
 }
 
 .explain.explain-active {
-  color: var(--chart);
-  border-left: 2px solid var(--gold);
+  color: var(--fog);
+  border-left: 2px solid var(--brass);
   padding-left: 10px;
 }
 
@@ -354,39 +449,42 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  font-family: var(--font-mono);
   font-size: 12px;
-  text-transform: capitalize;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .roster-name {
   flex: 1;
-  color: var(--chart);
+  color: var(--fog);
 }
 
 .roster-status {
-  min-width: 42px;
+  min-width: 46px;
   text-align: right;
   font-size: 11px;
   letter-spacing: 0.08em;
-  color: var(--steel);
+  color: var(--fog-dim);
 }
 
 .roster-summary {
   margin-top: 4px;
   padding-top: 8px;
-  border-top: 1px solid rgba(127, 157, 179, 0.25);
+  border-top: 1px solid rgba(220, 230, 235, 0.12);
+  font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.08em;
-  color: var(--steel);
+  color: var(--fog-dim);
 }
 
 .roster-row.roster-sunk .roster-name {
-  color: var(--flare);
+  color: var(--klaxon);
   text-decoration: line-through;
 }
 
 .roster-row.roster-sunk .roster-status {
-  color: var(--flare);
+  color: var(--klaxon);
 }
 
 .hull {
@@ -398,13 +496,13 @@ body {
   width: 10px;
   height: 12px;
   border-radius: 2px;
-  border: 1px solid rgba(207, 227, 242, 0.35);
-  background: linear-gradient(180deg, #43607a, #2b455c);
+  border: 1px solid var(--brass-dim);
+  background: var(--brass);
 }
 
 .hull-segment.hull-hit {
-  background: linear-gradient(180deg, var(--flare), #7c2717);
-  border-color: rgba(255, 122, 89, 0.7);
+  background: var(--klaxon);
+  border-color: var(--klaxon);
 }
 
 .icon-button {
@@ -412,38 +510,30 @@ body {
   align-items: center;
   gap: 8px;
   padding: 8px 14px;
-  font: inherit;
+  font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--chart);
-  background: rgba(9, 30, 49, 0.9);
-  border: 1px solid rgba(127, 157, 179, 0.4);
-  border-radius: 4px;
+  color: var(--brass);
+  background: transparent;
+  border: 1px solid var(--brass-dim);
+  border-radius: 2px;
   cursor: pointer;
 }
 
 .icon-button[aria-pressed="true"] {
-  color: var(--steel);
-  border-color: rgba(127, 157, 179, 0.22);
+  color: var(--fog-dim);
+  border-color: rgba(220, 230, 235, 0.18);
 }
 
 .icon-button:hover {
-  border-color: var(--sonar);
+  background: rgba(201, 154, 62, 0.08);
 }
 
 /* ---- Placement (strategy) panel ---- */
 
 .placement[hidden] {
   display: none;
-}
-
-.placement-head h2 {
-  margin: 0 0 2px;
-  font-size: 15px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--gold);
 }
 
 .placement-body {
@@ -463,28 +553,29 @@ body {
   gap: 8px;
   width: 100%;
   padding: 8px 10px;
-  font: inherit;
+  font-family: var(--font-mono);
   font-size: 12px;
-  text-transform: capitalize;
-  color: var(--chart);
-  background: rgba(9, 30, 49, 0.75);
-  border: 1px solid rgba(127, 157, 179, 0.28);
-  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fog);
+  background: var(--hull);
+  border: 1px solid rgba(220, 230, 235, 0.1);
+  border-radius: 2px;
   cursor: pointer;
 }
 
 .roster-pick:hover {
-  border-color: var(--sonar);
+  border-color: var(--phosphor);
 }
 
 .roster-pick-active {
-  border-color: var(--gold);
-  box-shadow: 0 0 0 1px rgba(224, 179, 86, 0.4);
+  border-color: var(--brass);
+  box-shadow: 0 0 0 1px rgba(201, 154, 62, 0.4);
 }
 
-.roster-pick-placed .hull-segment {
-  background: linear-gradient(180deg, var(--sonar), #268f81);
-  border-color: rgba(78, 225, 193, 0.6);
+/* A ship still waiting to be deployed shows a hollow hull. */
+.roster-pick:not(.roster-pick-placed) .hull-segment {
+  background: transparent;
 }
 
 .placement-controls {
@@ -498,147 +589,28 @@ body {
   margin-top: 0;
 }
 
-.button-quiet {
-  color: var(--chart);
-  background: rgba(9, 30, 49, 0.9);
-  border: 1px solid rgba(127, 157, 179, 0.4);
-}
-
-.button-quiet:hover {
-  border-color: var(--sonar);
-}
-
-.button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-  filter: none;
-}
-
 #placement-board .cell {
   cursor: pointer;
-}
-
-.cell.ship-seg.is-ship {
-  background:
-    linear-gradient(90deg, transparent 42%, rgba(207, 255, 241, 0.3) 48%, rgba(207, 255, 241, 0.3) 52%, transparent 58%),
-    linear-gradient(180deg, #63efcf, #268f81 48%, #17675f);
-  box-shadow:
-    inset 0 1px 0 rgba(207, 255, 241, 0.65),
-    inset 0 -2px 0 rgba(4, 18, 31, 0.4);
-}
-
-.cell.ship-seg.ship-v.is-ship {
-  background:
-    linear-gradient(0deg, transparent 42%, rgba(207, 255, 241, 0.3) 48%, rgba(207, 255, 241, 0.3) 52%, transparent 58%),
-    linear-gradient(180deg, #63efcf, #268f81 48%, #17675f);
 }
 
 .key-hint {
   padding: 1px 5px;
   border: 1px solid currentColor;
-  border-radius: 3px;
+  border-radius: 2px;
   font-size: 10px;
 }
 
 .cell.preview-ok {
-  background: rgba(78, 225, 193, 0.5);
-  border-color: var(--sonar);
+  background: rgba(58, 219, 118, 0.35);
+  border-color: var(--phosphor);
 }
 
 .cell.preview-bad {
-  background: rgba(255, 122, 89, 0.45);
-  border-color: var(--flare);
+  background: rgba(232, 67, 46, 0.3);
+  border-color: var(--klaxon);
 }
 
-/* ---- Firing animations ---- */
-
-@keyframes reticle-lock {
-  0% {
-    box-shadow: inset 0 0 0 1px var(--gold);
-    transform: scale(1.18);
-  }
-  100% {
-    box-shadow: inset 0 0 0 7px var(--gold);
-    transform: scale(0.94);
-  }
-}
-
-@keyframes splash-out {
-  0% {
-    box-shadow: 0 0 0 0 rgba(207, 227, 242, 0.85);
-    opacity: 1;
-  }
-  100% {
-    box-shadow: 0 0 0 16px rgba(207, 227, 242, 0);
-    opacity: 0.6;
-  }
-}
-
-@keyframes boom-out {
-  0% {
-    background: #fff5d6;
-    box-shadow: 0 0 6px 4px rgba(255, 190, 90, 0.95);
-    transform: scale(1.5);
-  }
-  60% {
-    background: var(--flare);
-    box-shadow: 0 0 14px 8px rgba(255, 122, 89, 0.55);
-    transform: scale(1.16);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(255, 122, 89, 0);
-    transform: scale(1);
-  }
-}
-
-@keyframes board-jolt {
-  0%,
-  100% {
-    transform: translate(0, 0);
-  }
-  25% {
-    transform: translate(-3px, 2px);
-  }
-  50% {
-    transform: translate(3px, -2px);
-  }
-  75% {
-    transform: translate(-2px, -1px);
-  }
-}
-
-.cell.fx-lock {
-  animation: reticle-lock 260ms ease-in forwards;
-  z-index: 2;
-}
-
-.cell.fx-splash {
-  animation: splash-out 600ms ease-out;
-}
-
-.cell.fx-boom {
-  animation: boom-out 600ms ease-out;
-  z-index: 2;
-}
-
-.board-shake {
-  animation: board-jolt 320ms ease-in-out;
-}
-
-.board-sink {
-  animation: board-jolt 600ms ease-in-out;
-  box-shadow: inset 0 0 60px rgba(255, 122, 89, 0.35);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .cell.fx-lock,
-  .cell.fx-splash,
-  .cell.fx-boom,
-  .board-shake,
-  .board-sink {
-    animation: none;
-  }
-}
+/* ---- End screen ---- */
 
 .end-screen {
   position: fixed;
@@ -646,8 +618,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(4, 18, 31, 0.85);
+  background: rgba(10, 20, 32, 0.85);
   backdrop-filter: blur(3px);
+  z-index: 50;
 }
 
 .end-screen[hidden] {
@@ -658,23 +631,26 @@ body {
   width: min(440px, 90vw);
   padding: 28px;
   text-align: center;
-  border: 1px solid var(--gold);
-  border-radius: 8px;
-  background: linear-gradient(170deg, #0d2c45, #061625);
+  border: 1px solid var(--brass-dim);
+  border-radius: 4px;
+  background: var(--hull);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
 }
 
 .end-card h2 {
   margin: 0;
-  font-size: 26px;
-  letter-spacing: 0.2em;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 44px;
+  line-height: 1;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--gold);
+  color: var(--brass);
 }
 
 .end-summary {
   margin: 12px 0 0;
-  color: var(--chart);
+  color: var(--fog);
 }
 
 #efficiency-stat:not(:empty),
@@ -682,27 +658,61 @@ body {
   margin-top: 16px;
   /* populated by the integration pass; empty by default */
   padding-top: 14px;
-  border-top: 1px solid rgba(127, 157, 179, 0.3);
+  border-top: 1px solid rgba(220, 230, 235, 0.12);
   font-size: 13px;
   line-height: 1.55;
-  color: var(--steel);
+  color: var(--fog-dim);
   text-align: left;
 }
 
+/* ---- Buttons ---- */
+
 .button {
   margin-top: 22px;
-  padding: 11px 26px;
-  font: inherit;
+  padding: 13px 26px;
+  font-family: var(--font-mono);
   font-size: 13px;
-  letter-spacing: 0.16em;
+  font-weight: 700;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--deeper);
-  background: linear-gradient(180deg, var(--sonar), #29b3a0);
-  border: none;
-  border-radius: 4px;
+  color: var(--abyss);
+  background: var(--phosphor);
+  border: 1px solid var(--phosphor);
+  border-radius: 2px;
   cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease;
 }
 
 .button:hover {
-  filter: brightness(1.08);
+  box-shadow: 0 0 18px rgba(58, 219, 118, 0.45);
+}
+
+.button:active {
+  transform: translateY(1px);
+}
+
+.button-quiet {
+  color: var(--brass);
+  background: transparent;
+  border-color: var(--brass-dim);
+  font-weight: 400;
+}
+
+.button-quiet:hover {
+  background: rgba(201, 154, 62, 0.08);
+  box-shadow: none;
+}
+
+.button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cell.is-miss::after,
+  .cell.is-hit::after,
+  .cell.is-sunk {
+    animation: none;
+  }
 }

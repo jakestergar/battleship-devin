@@ -1,0 +1,408 @@
+/* BATTLESTATION motion. Requires tokens.css to be loaded first.
+   Every rule here reports a specific game-state change — motion is
+   functional, not ambient. The `bs-*` class names are the contract
+   animations.js drives; the keyframes are the design system's catalog. */
+
+/* ---------- 1. Sonar ping — hit confirmation ---------- */
+.bs-ping {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.bs-ping::before,
+.bs-ping::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid var(--phosphor);
+  animation: ping 1.4s cubic-bezier(0, 0.5, 0.5, 1) 2;
+}
+
+.bs-ping::after {
+  animation-delay: 0.5s;
+}
+
+@keyframes ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(6);
+    opacity: 0;
+  }
+}
+
+/* ---------- 2. Klaxon flash — your ship took a hit ---------- */
+.bs-klaxon-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  box-shadow: inset 0 0 90px 12px var(--klaxon);
+  animation: flash 0.45s ease-in-out 2;
+}
+
+@keyframes flash {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+/* ---------- 3. Scan sweep — waiting on the opponent ---------- */
+.bs-scanning {
+  position: relative;
+  overflow: hidden;
+}
+
+.bs-scanning::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -40%;
+  width: 40%;
+  height: 100%;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(58, 219, 118, 0.5),
+    transparent
+  );
+  animation: scan 2.2s ease-in-out infinite;
+}
+
+@keyframes scan {
+  0% {
+    left: -40%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+/* ---------- 4. Periscope rise — panel/ship entering ---------- */
+.bs-rise {
+  animation: rise 0.5s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+@keyframes rise {
+  0% {
+    transform: translateY(6px);
+    opacity: 0.4;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* ---------- 5. Missile flight ---------- */
+/* Positioned by animations.js via the Web Animations API along a computed
+   parabolic arc, so it reads as a physical object rather than a UI slide. */
+.bs-missile {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 16px;
+  height: 6px;
+  border-radius: 2px 6px 6px 2px;
+  background: linear-gradient(90deg, var(--brass), var(--fog));
+  box-shadow: 0 0 6px 1px rgba(201, 154, 62, 0.7);
+  z-index: 21;
+}
+
+.bs-missile::before {
+  content: "";
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  width: 26px;
+  height: 3px;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, rgba(255, 138, 61, 0.85));
+  filter: blur(1px);
+}
+
+/* Muzzle flash on the ship cell a shot launches from. */
+.bs-muzzle {
+  animation: bs-muzzle 0.4s ease-out;
+}
+
+@keyframes bs-muzzle {
+  0% {
+    box-shadow: 0 0 0 0 rgba(201, 154, 62, 0.75);
+  }
+  100% {
+    box-shadow: 0 0 22px 10px rgba(201, 154, 62, 0);
+  }
+}
+
+/* ---------- Targeting reticle ---------- */
+/* Separate from the fire action: aiming is free, clicking commits. */
+.bs-reticle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--cell);
+  height: var(--cell);
+  pointer-events: none;
+  transform: translate(-9999px, -9999px);
+  z-index: 15;
+  transition: transform 0.06s linear;
+}
+
+.bs-reticle-ring {
+  position: absolute;
+  inset: -6px;
+  border: 1px dashed var(--phosphor);
+  border-radius: 50%;
+  animation: reticle-spin 3s linear infinite;
+}
+
+.bs-reticle-cross::before,
+.bs-reticle-cross::after {
+  content: "";
+  position: absolute;
+  background: var(--phosphor);
+  opacity: 0.9;
+}
+
+.bs-reticle-cross::before {
+  left: 50%;
+  top: -10px;
+  bottom: -10px;
+  width: 1px;
+  transform: translateX(-50%);
+}
+
+.bs-reticle-cross::after {
+  top: 50%;
+  left: -10px;
+  right: -10px;
+  height: 1px;
+  transform: translateY(-50%);
+}
+
+@keyframes reticle-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- 6. Hit fire — local flare, contained in one cell ---------- */
+.bs-fx-fire {
+  position: absolute;
+  inset: -6px;
+  pointer-events: none;
+  z-index: 12;
+}
+
+.bs-fx-fire .flame {
+  position: absolute;
+  left: 50%;
+  bottom: 38%;
+  width: 14px;
+  height: 20px;
+  transform: translateX(-50%);
+  background: radial-gradient(
+    circle at 50% 100%,
+    var(--klaxon-hot),
+    var(--klaxon) 60%,
+    transparent 75%
+  );
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  animation: flicker 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes flicker {
+  0% {
+    transform: translateX(-50%) scale(1) rotate(-3deg);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translateX(-50%) scale(1.15) rotate(3deg);
+    opacity: 1;
+  }
+}
+
+.bs-fx-fire .ember {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--brass);
+  bottom: 40%;
+  left: 50%;
+  opacity: 0;
+  animation: ember-rise 1s ease-out forwards;
+}
+
+@keyframes ember-rise {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--ex, 8px), -30px);
+  }
+}
+
+.bs-fx-flash {
+  position: absolute;
+  inset: -4px;
+  border-radius: 4px;
+  background: var(--klaxon-hot);
+  animation: hitflash 0.35s ease-out forwards;
+  mix-blend-mode: screen;
+}
+
+@keyframes hitflash {
+  0% {
+    opacity: 0.9;
+    transform: scale(1.4);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+
+/* ---------- 7. Sink explosion — deliberately breaks containment ---------- */
+.bs-fx-explosion {
+  position: absolute;
+  inset: -40px;
+  pointer-events: none;
+  z-index: 22;
+}
+
+.bs-fx-explosion .core {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    #fff 0%,
+    var(--klaxon-hot) 35%,
+    var(--klaxon) 65%,
+    transparent 78%
+  );
+  animation: core-burst 0.6s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+
+@keyframes core-burst {
+  0% {
+    transform: scale(0.3);
+    opacity: 1;
+  }
+  60% {
+    transform: scale(3.2);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(4.4);
+    opacity: 0;
+  }
+}
+
+.bs-fx-explosion .shock {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--klaxon-hot);
+  animation: shock-ring 0.7s ease-out forwards;
+}
+
+@keyframes shock-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(7);
+    opacity: 0;
+  }
+}
+
+.bs-fx-explosion .debris {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 10px;
+  background: var(--brass);
+  transform-origin: center;
+  animation: debris-fly 0.7s ease-out forwards;
+}
+
+@keyframes debris-fly {
+  0% {
+    transform: translate(-50%, -50%) rotate(var(--ang)) translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) rotate(var(--ang)) translateY(-46px);
+    opacity: 0;
+  }
+}
+
+/* ---------- 8. Screen shake — fires alongside a sink only ---------- */
+.bs-shake {
+  animation: shake 0.32s linear;
+}
+
+@keyframes shake {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  20% {
+    transform: translate(-3px, 2px);
+  }
+  40% {
+    transform: translate(3px, -2px);
+  }
+  60% {
+    transform: translate(-2px, -2px);
+  }
+  80% {
+    transform: translate(2px, 2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bs-ping::before,
+  .bs-ping::after,
+  .bs-klaxon-flash,
+  .bs-scanning::after,
+  .bs-rise,
+  .bs-muzzle,
+  .bs-reticle-ring,
+  .bs-fx-fire .flame,
+  .bs-fx-fire .ember,
+  .bs-fx-flash,
+  .bs-fx-explosion .core,
+  .bs-fx-explosion .shock,
+  .bs-fx-explosion .debris,
+  .bs-shake {
+    animation: none;
+  }
+}

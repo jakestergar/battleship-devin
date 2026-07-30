@@ -19,11 +19,22 @@ import {
   startMusic,
   toggleMuted,
 } from "./audio.js";
+import {
+  fxExplosion,
+  fxFire,
+  hideReticle,
+  klaxonFlash,
+  launchMissile,
+  positionReticle,
+  spawnFx,
+  spawnPing,
+  triggerShake,
+} from "./animations.js";
 
 const HEATMAP_DWELL_MS = 650;
 const RESULT_PAUSE_MS = 200;
-const LOCK_ON_MS = 260;
 const IMPACT_MS = 620;
+const MISSILE_MS = 650;
 
 function key(row, col) {
   return `${row},${col}`;
@@ -140,6 +151,7 @@ function cacheElements() {
   els.placementBoard = document.getElementById("placement-board");
   els.placementRoster = document.getElementById("placement-roster");
   els.placementHint = document.getElementById("placement-hint");
+  els.missileLayer = document.getElementById("missile-layer");
   els.rotateShip = document.getElementById("rotate-ship");
   els.randomizeFleet = document.getElementById("randomize-fleet");
   els.clearFleet = document.getElementById("clear-fleet");
@@ -417,12 +429,28 @@ function render() {
   }
   renderBoard(els.aiBoard, state.aiBoard, { revealShips: false });
   renderBoard(els.playerBoard, state.playerBoard, { revealShips: true });
+  renderLaunchPoint();
   renderRosters();
   renderConfidence();
   renderExplain();
   renderShotCount();
   renderStatusLine();
   renderEndScreen();
+}
+
+/** Marks the hull segment the next shot will launch from. */
+function renderLaunchPoint() {
+  const launch = playerLaunchCell();
+  for (const cellEl of els.playerBoard.children) {
+    cellEl.classList.toggle(
+      "launch-point",
+      Boolean(
+        launch &&
+          Number(cellEl.dataset.row) === launch.row &&
+          Number(cellEl.dataset.col) === launch.col
+      )
+    );
+  }
 }
 
 /** Integration hook: a later pass calls this with the generated report text. */
@@ -491,60 +519,150 @@ function sleep(ms) {
 }
 
 /**
- * Targeting-reticle beat before a shot resolves, then the impact burst.
- * Purely decorative: every step is guarded so a DOM or timing failure can't
- * stall a turn.
+ * The cell a player's shot flies from: the un-sunk hull segment closest to
+ * the gap between the two boards, so a shot visibly leaves a real ship
+ * rather than an abstract launcher. Enemy Waters sits to the left of Your
+ * Fleet, so "closest to the gap" is the lowest column.
  */
-async function playLockOn(container, cell) {
+function playerLaunchCell() {
+  let best = null;
+  for (const ship of state.playerBoard.ships) {
+    if (ship.sunk) continue;
+    for (const cell of ship.cells) {
+      if (!best || cell.col < best.col) best = cell;
+    }
+  }
+  return best;
+}
+
+/**
+ * Where the AI's shot flies from. The enemy's real ship positions are
+ * hidden, so this deliberately uses the enemy board's edge on the same row
+ * as the target — it leaks nothing about the enemy fleet's layout.
+ */
+function enemyLaunchCellEl(target) {
+  return cellElAt(els.aiBoard, target.row, BOARD_SIZE - 1);
+}
+
+/**
+ * Fly a missile along its arc and resolve once it lands. Every step is
+ * guarded and the promise always settles, so a DOM, layout, or Web
+ * Animations failure degrades to an instant shot instead of stalling a turn.
+ */
+function flyMissile(sourceEl, targetEl) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const arrive = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+
+    try {
+      if (!els.missileLayer || !sourceEl || !targetEl) {
+        arrive();
+        return;
+      }
+      sourceEl.classList.add("bs-muzzle");
+      setTimeout(() => sourceEl.classList.remove("bs-muzzle"), 400);
+      playEffect("fire");
+      launchMissile(els.missileLayer, sourceEl, targetEl, arrive, {
+        duration: MISSILE_MS,
+      });
+      // Backstop in case the animation never reports finishing.
+      setTimeout(arrive, MISSILE_MS + 400);
+    } catch {
+      arrive();
+    }
+  });
+}
+
+/**
+ * The result beat: a hit is a local flare contained in one cell, a sink
+ * breaks that containment with a full explosion and a board shake. Purely
+ * decorative and fully guarded.
+ */
+function playImpact(container, cell, result, { own = false } = {}) {
   try {
     const cellEl = cellElAt(container, cell.row, cell.col);
     if (!cellEl) return;
-    cellEl.classList.add("fx-lock");
-    playEffect("fire");
-    await sleep(LOCK_ON_MS);
-    cellEl.classList.remove("fx-lock");
+
+    if (result === "hit") {
+      spawnFx(cellEl, fxFire(), IMPACT_MS + 780);
+      spawnPing(cellEl);
+    } else if (result === "sunk") {
+      spawnFx(cellEl, fxExplosion(), IMPACT_MS + 780);
+      spawnPing(cellEl);
+      triggerShake(container);
+    }
+    // A miss needs no effect node: the cell's own ripple state carries it.
+
+    if (own && result !== "miss") klaxonFlash();
+    playEffect(result === "no-op" ? "invalid" : result);
   } catch {
     /* decorative only */
   }
 }
 
-function playImpact(container, cell, result) {
+/** Scan sweep while the opponent is thinking. */
+function setScanning(on) {
   try {
-    const cellEl = cellElAt(container, cell.row, cell.col);
-    if (!cellEl) return;
-    const fx = result === "miss" ? "fx-splash" : "fx-boom";
-    cellEl.classList.add(fx);
-    if (result !== "miss") container.classList.add("board-shake");
-    if (result === "sunk") container.classList.add("board-sink");
-    playEffect(result === "no-op" ? "invalid" : result);
-    setTimeout(() => {
-      try {
-        cellEl.classList.remove(fx);
-        container.classList.remove("board-shake", "board-sink");
-      } catch {
-        /* element already gone */
-      }
-    }, IMPACT_MS);
+    const panel = els.playerBoard?.closest(".board-panel");
+    if (panel) panel.classList.toggle("bs-scanning", on);
   } catch {
     /* decorative only */
   }
+}
+
+/**
+ * Targeting reticle: a dashed ring and crosshair that snaps to whichever
+ * enemy cell the cursor is over. Kept separate from firing so aiming feels
+ * free and the click is the committed action.
+ */
+function setUpReticle() {
+  const frame = els.aiBoard.closest(".board-frame") ?? els.aiBoard.parentElement;
+  if (!frame) return;
+
+  const reticle = document.createElement("div");
+  reticle.className = "bs-reticle";
+  reticle.setAttribute("aria-hidden", "true");
+  reticle.innerHTML =
+    '<div class="bs-reticle-ring"></div><div class="bs-reticle-cross"></div>';
+  frame.appendChild(reticle);
+  els.reticle = reticle;
+
+  els.aiBoard.addEventListener("mousemove", (event) => {
+    const cellEl = event.target.closest(".cell");
+    if (!cellEl || busy || isGameOver(state)) {
+      hideReticle(reticle);
+      return;
+    }
+    positionReticle(reticle, cellEl, frame);
+  });
+  els.aiBoard.addEventListener("mouseleave", () => hideReticle(reticle));
 }
 
 async function takeAiTurn() {
   const move = realChooseMove(state);
   if (!move || !move.cell) return;
 
+  setScanning(true);
   showHeatmap(move.probabilityMap);
   await sleep(HEATMAP_DWELL_MS);
   clearHeatmap();
+  setScanning(false);
 
-  await playLockOn(els.playerBoard, move.cell);
   const { newState, result } = fireAt(state, "player", move.cell);
+  await flyMissile(
+    enemyLaunchCellEl(move.cell),
+    cellElAt(els.playerBoard, move.cell.row, move.cell.col)
+  );
+
   annotateAiMove(newState, move, move.probabilityMap);
   state = newState;
   explainOpen = false;
   render();
-  playImpact(els.playerBoard, move.cell, result);
+  playImpact(els.playerBoard, move.cell, result, { own: true });
   if (isGameOver(state)) playEffect(state.status === "player_won" ? "victory" : "defeat");
 }
 
@@ -557,10 +675,17 @@ async function onPlayerShot(cell) {
 
   busy = true;
   els.aiBoard.classList.add("board-locked");
+  if (els.reticle) hideReticle(els.reticle);
   try {
-    await playLockOn(els.aiBoard, cell);
     const { newState, result } = fireAt(state, "ai", cell);
     if (result === "no-op") return; // engine already decided this changes nothing
+
+    const launch = playerLaunchCell();
+    await flyMissile(
+      launch ? cellElAt(els.playerBoard, launch.row, launch.col) : null,
+      cellElAt(els.aiBoard, cell.row, cell.col)
+    );
+
     state = newState;
     render();
     playImpact(els.aiBoard, cell, result);
@@ -817,6 +942,7 @@ function init() {
   frameBoard(els.aiBoard);
   frameBoard(els.playerBoard.parentElement);
   frameBoard(els.placementBoard);
+  setUpReticle();
   initAudio();
   renderMuteButton();
 
