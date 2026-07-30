@@ -267,6 +267,36 @@ Outcome** (filled in once known).
   `{cell, confidence, explanation}`, but `computeProbabilityMap` is exported,
   so the integration pass can call it at that same call site for the heatmap.
 
+### 16. Integration: extended `ai.chooseMove` to return `probabilityMap`, wired UI to the real AI
+- **Rationale:** Decision 15 flagged the real gap the UI session found — no
+  module actually supplied `HistoryEntry.probabilityMapSnapshot`. Since
+  `chooseMove` already computed the grid internally, added it to the
+  return value (`probabilityMap`) as a backward-compatible extension
+  rather than changing the engine's contract.
+- **Assessment: Good decision.** Small, additive, and unblocks the
+  heatmap/confidence/explain layers immediately instead of waiting for a
+  dedicated integration session. Updated `tests/ai.test.js`'s exact-shape
+  assertion to include the new field and added a sanity check that the
+  chosen cell holds the map's peak weight.
+- **Outcome:** `src/ui.js`'s marked TODO (`takeAiTurn`) now calls the real
+  `ai.chooseMove` instead of the mock. 20/20 tests passing after the change.
+  Verified manually in a live browser preview.
+
+### 17. Duplicate AI session discovered and closed (PR #2 vs. #3)
+- **Rationale:** The `02-ai-brief.md` prompt was apparently sent to two
+  separate cloud sessions, producing two independent implementations (PR #2
+  and PR #3). Only #3 was reported and reviewed at the time; #2 surfaced
+  later, already `CONFLICTING` against `main` since #3 had been merged and
+  further extended (Decision 16) in the meantime.
+- **Assessment: Not a bad decision, just a process gap — worth guarding
+  against for the harness session.** Closed #2 without merging: no
+  functional gap it covered that #3 didn't (same algorithm class, ~44 shots
+  either way), and merging it would have overwritten already-verified,
+  already-integrated work for no benefit. Before dispatching the harness
+  brief, confirm only one session is created per brief.
+- **Outcome:** PR #2 closed with an explanatory comment, branch deleted.
+  `main` is unaffected — still the #3 + Decision 16 implementation.
+
 ---
 
 *(New decisions get appended below as they're made.)*

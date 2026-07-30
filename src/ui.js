@@ -2,6 +2,7 @@
 // nothing in here recomputes hit/miss/sunk/win logic.
 
 import { BOARD_SIZE, FLEET, createGame, fireAt, isGameOver } from "./engine.js";
+import { chooseMove as realChooseMove } from "./ai.js";
 
 const HEATMAP_DWELL_MS = 650;
 const RESULT_PAUSE_MS = 200;
@@ -319,8 +320,7 @@ function sleep(ms) {
 }
 
 async function takeAiTurn() {
-  // TODO(integration): swap mock for real ai.chooseMove
-  const move = mockChooseMove(state);
+  const move = realChooseMove(state);
   if (!move || !move.cell) return;
 
   showHeatmap(move.probabilityMap);

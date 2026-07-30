@@ -226,10 +226,14 @@ function pickRandom(cells) {
  * Picks the AI's next shot: the maximum-density cell from
  * `computeProbabilityMap`, breaking ties uniformly at random.
  *
- * Returns `{ cell: {row, col}, confidence: number, explanation: string }`.
- * `confidence` is the peak weight as a share of the whole grid's weight —
- * a consistent 0-1 measure of how concentrated the decision was, not a
- * rigorous posterior probability.
+ * Returns `{ cell: {row, col}, confidence: number, explanation: string,
+ * probabilityMap: number[][] }`. `confidence` is the peak weight as a share
+ * of the whole grid's weight — a consistent 0-1 measure of how concentrated
+ * the decision was, not a rigorous posterior probability. `probabilityMap`
+ * is the exact grid the decision was made from (also available standalone
+ * via `computeProbabilityMap`) — this is what the UI renders as the
+ * heatmap overlay and attaches to the HistoryEntry (see
+ * `planning/decision-log.md`, Decision 15).
  */
 export function chooseMove(state) {
   const knowledge = gatherFairKnowledge(state);
@@ -264,5 +268,6 @@ export function chooseMove(state) {
     cell,
     confidence: total > 0 ? peak / total : 0,
     explanation: buildExplanation(cell, knowledge, stats),
+    probabilityMap: grid,
   };
 }

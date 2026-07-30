@@ -148,7 +148,21 @@ test("chooseMove returns the documented shape and a legal, in-bounds cell", () =
   assert.equal(typeof move.explanation, "string");
   assert.ok(move.confidence > 0 && move.confidence <= 1);
   assert.match(move.explanation, /Bayesian Search Theory/);
-  assert.deepEqual(Object.keys(move).sort(), ["cell", "confidence", "explanation"]);
+  assert.deepEqual(
+    Object.keys(move).sort(),
+    ["cell", "confidence", "explanation", "probabilityMap"].sort()
+  );
+  // probabilityMap is the exact grid the decision was made from — added at
+  // integration (planning/decision-log.md, Decision 16) to close the gap
+  // the UI session flagged: nothing previously supplied
+  // HistoryEntry.probabilityMapSnapshot for the heatmap.
+  assert.equal(move.probabilityMap.length, BOARD_SIZE);
+  const peak = Math.max(...move.probabilityMap.flat());
+  assert.equal(
+    move.probabilityMap[move.cell.row][move.cell.col],
+    peak,
+    "chosen cell holds the map's peak weight"
+  );
 });
 
 test("chooseMove never selects a cell that has already been fired at", () => {
