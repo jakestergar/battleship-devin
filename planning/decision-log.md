@@ -238,6 +238,35 @@ Outcome** (filled in once known).
   ~95 shots, so this is roughly a 54% improvement — real, measured, and
   reportable in the debrief rather than asserted.
 
+### 15. UI attaches the AI's decision metadata to the engine's HistoryEntry
+- **Rationale:** `technical-design.md` says `engine.fireAt` attaches
+  `probabilityMapSnapshot`/`confidence`/`explanation` to the `HistoryEntry`,
+  but the shipped engine (correctly) knows nothing about the AI module and
+  logs those three fields as `null`. Rather than widen `fireAt`'s signature
+  (the UI brief forbids changing the engine's contract) the UI writes those
+  fields onto the just-logged AI turn immediately after calling `fireAt`, so
+  the heatmap/confidence/explain layers still read them out of `history`
+  exactly as the contract specifies.
+- **Assessment: Good decision, with a small risk to resolve at integration.**
+  It keeps the engine pure and the contract's *shape* intact, and it's one
+  small function (`annotateAiMove`) wrapped in try/catch so a failure can't
+  stop a turn. The risk: the write happens after the engine's clone, so it
+  mutates the new state's newest entry — safe today (only the UI holds that
+  state) but the integration pass should decide the permanent home for this
+  (either a `fireAt` metadata argument or an explicit engine helper).
+- **Related gap:** `ai.chooseMove` returns `{cell, confidence, explanation}` —
+  no probability grid — so nothing in the current contract actually supplies
+  `probabilityMapSnapshot` for the heatmap. The UI reads an optional
+  `probabilityMap` off the `chooseMove` result (the mock provides one); at
+  integration, `ai.js` should either include it or expose
+  `computeProbabilityMap` for the UI to call at the single integration point.
+- **Outcome:** `index.html`, `src/ui.js`, `src/style.css` built against the
+  mock AI, with one marked integration point
+  (`// TODO(integration): swap mock for real ai.chooseMove`). Confirmed
+  against the now-merged `src/ai.js`: `chooseMove` returns only
+  `{cell, confidence, explanation}`, but `computeProbabilityMap` is exported,
+  so the integration pass can call it at that same call site for the heatmap.
+
 ---
 
 *(New decisions get appended below as they're made.)*

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Battleship — Bayesian Search Theory AI</title>
+    <link rel="stylesheet" href="src/style.css" />
+  </head>
+  <body>
+    <div class="frame">
+      <header class="masthead">
+        <h1>Battleship</h1>
+        <p class="subtitle">Human vs. an AI that uses Bayesian Search Theory</p>
+      </header>
+
+      <p id="status-line" class="status-line">Your move — fire on the enemy waters.</p>
+
+      <main class="theatre">
+        <section class="board-panel">
+          <h2>Enemy Waters</h2>
+          <p class="board-hint">Click a cell to fire.</p>
+          <div id="ai-board" class="board" role="grid" aria-label="Enemy waters"></div>
+        </section>
+
+        <section class="board-panel">
+          <h2>Your Fleet</h2>
+          <p class="board-hint">
+            Incoming fire. Click the AI's latest shot to see its reasoning.
+          </p>
+          <div class="board-stack">
+            <div id="player-board" class="board" role="grid" aria-label="Your fleet"></div>
+            <div id="heatmap" class="heatmap" aria-hidden="true"></div>
+          </div>
+        </section>
+
+        <aside class="console">
+          <div class="console-block">
+            <h3>AI Confidence</h3>
+            <div class="meter" role="img" aria-label="AI confidence">
+              <div id="confidence-bar" class="meter-fill"></div>
+            </div>
+            <p id="confidence-value" class="metric">—</p>
+          </div>
+
+          <div class="console-block">
+            <h3>Explain This Move</h3>
+            <p id="explain-panel" class="explain">
+              Click the AI's most recent shot marker on your fleet to see why it
+              fired there.
+            </p>
+          </div>
+
+          <div class="console-block">
+            <h3>Shots Fired</h3>
+            <p id="shot-count" class="metric">You 0 · AI 0</p>
+          </div>
+
+          <div class="console-block">
+            <h3>Fleet Status</h3>
+            <ul id="fleet-status" class="fleet-status"></ul>
+          </div>
+        </aside>
+      </main>
+
+      <div id="end-screen" class="end-screen" hidden>
+        <div class="end-card">
+          <h2 id="end-title">Victory</h2>
+          <p id="end-summary" class="end-summary"></p>
+          <!-- Populated by a later integration pass via renderEfficiencyStat() -->
+          <div id="efficiency-stat"></div>
+          <!-- Populated by a later integration pass via renderBattleReport() -->
+          <div id="battle-report"></div>
+          <button id="new-game" class="button" type="button">New Game</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="src/ui.js"></script>
+  </body>
+</html>
