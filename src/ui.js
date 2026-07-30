@@ -1,11 +1,29 @@
 // Rendering and input handling only. All game rules go through engine.js —
 // nothing in here recomputes hit/miss/sunk/win logic.
 
-import { BOARD_SIZE, FLEET, createGame, fireAt, isGameOver } from "./engine.js";
+import {
+  BOARD_SIZE,
+  FLEET,
+  cellsForPlacement,
+  createGame,
+  fireAt,
+  isGameOver,
+  randomFleetLayout,
+  validateFleetLayout,
+} from "./engine.js";
 import { chooseMove as realChooseMove } from "./ai.js";
+import {
+  initAudio,
+  isMuted,
+  playEffect,
+  startMusic,
+  toggleMuted,
+} from "./audio.js";
 
 const HEATMAP_DWELL_MS = 650;
 const RESULT_PAUSE_MS = 200;
+const LOCK_ON_MS = 260;
+const IMPACT_MS = 620;
 
 function key(row, col) {
   return `${row},${col}`;
@@ -65,10 +83,40 @@ export function normalizeProbabilityMap(map, size = BOARD_SIZE) {
   return map.map((row) => row.map((weight) => weight / peak));
 }
 
+/**
+ * Whether `cells` can host a ship in an in-progress placement layout:
+ * in-bounds and clear of every other ship (the ship being moved, `movingId`,
+ * is ignored so a ship can slide over its own footprint).
+ */
+export function isPlacementLegal(layout, cells, size = BOARD_SIZE, movingId = null) {
+  if (!Array.isArray(cells) || cells.length === 0) return false;
+  if (
+    !cells.every(
+      (c) => c.row >= 0 && c.row < size && c.col >= 0 && c.col < size
+    )
+  ) {
+    return false;
+  }
+  const taken = new Set();
+  for (const ship of layout) {
+    if (ship.id === movingId) continue;
+    for (const cell of ship.cells) taken.add(key(cell.row, cell.col));
+  }
+  return cells.every((c) => !taken.has(key(c.row, c.col)));
+}
+
 const els = {};
 let state = null;
 let busy = false;
 let explainOpen = false;
+
+// Placement-phase state. The engine is only handed a layout once the player
+// confirms it, so there is no "placing" game status to model in engine.js.
+let phase = "placement";
+let layout = [];
+let orientation = "horizontal";
+let selectedShipId = FLEET[0].id;
+let placementMessage = "";
 
 function cacheElements() {
   els.aiBoard = document.getElementById("ai-board");
@@ -79,16 +127,29 @@ function cacheElements() {
   els.confidenceValue = document.getElementById("confidence-value");
   els.explainPanel = document.getElementById("explain-panel");
   els.shotCount = document.getElementById("shot-count");
-  els.fleetStatus = document.getElementById("fleet-status");
+  els.yourFleet = document.getElementById("your-fleet");
+  els.enemyFleet = document.getElementById("enemy-fleet");
   els.endScreen = document.getElementById("end-screen");
   els.endTitle = document.getElementById("end-title");
   els.endSummary = document.getElementById("end-summary");
   els.newGame = document.getElementById("new-game");
   els.efficiencyStat = document.getElementById("efficiency-stat");
   els.battleReport = document.getElementById("battle-report");
+  els.theatre = document.getElementById("theatre");
+  els.placementScreen = document.getElementById("placement-screen");
+  els.placementBoard = document.getElementById("placement-board");
+  els.placementRoster = document.getElementById("placement-roster");
+  els.placementHint = document.getElementById("placement-hint");
+  els.rotateShip = document.getElementById("rotate-ship");
+  els.randomizeFleet = document.getElementById("randomize-fleet");
+  els.clearFleet = document.getElementById("clear-fleet");
+  els.startBattle = document.getElementById("start-battle");
+  els.muteToggle = document.getElementById("mute-toggle");
+  els.muteIcon = document.getElementById("mute-icon");
+  els.muteLabel = document.getElementById("mute-label");
 }
 
-function buildGrid(container, { clickable }) {
+function buildGrid(container, { clickable, label }) {
   container.textContent = "";
   for (let row = 0; row < BOARD_SIZE; row++) {
     for (let col = 0; col < BOARD_SIZE; col++) {
@@ -98,10 +159,7 @@ function buildGrid(container, { clickable }) {
       cell.dataset.row = String(row);
       cell.dataset.col = String(col);
       cell.setAttribute("role", "gridcell");
-      cell.setAttribute(
-        "aria-label",
-        `${clickable ? "Enemy" : "Your"} cell row ${row + 1} column ${col + 1}`
-      );
+      cell.setAttribute("aria-label", `${label} row ${row + 1} column ${col + 1}`);
       if (!clickable) cell.tabIndex = -1;
       container.appendChild(cell);
     }
@@ -115,6 +173,10 @@ function buildHeatmapGrid() {
     tile.className = "heat-tile";
     els.heatmap.appendChild(tile);
   }
+}
+
+function cellElAt(container, row, col) {
+  return container.children[row * BOARD_SIZE + col] ?? null;
 }
 
 function shipCellState(board, cell) {
@@ -151,25 +213,59 @@ function renderBoard(container, board, { revealShips }) {
   }
 }
 
-function renderFleetStatus() {
-  els.fleetStatus.textContent = "";
-  for (const { id } of FLEET) {
-    const mine = state.playerBoard.ships.find((s) => s.id === id);
-    const theirs = state.aiBoard.ships.find((s) => s.id === id);
-    const item = document.createElement("li");
-    item.className = "fleet-row";
-    const name = document.createElement("span");
-    name.className = "fleet-name";
-    name.textContent = id;
-    item.appendChild(name);
-    const yours = document.createElement("span");
-    yours.className = `pip ${mine.sunk ? "pip-lost" : "pip-alive"}`;
-    yours.title = mine.sunk ? "Your ship sunk" : "Your ship afloat";
-    const enemy = document.createElement("span");
-    enemy.className = `pip ${theirs.sunk ? "pip-killed" : "pip-unknown"}`;
-    enemy.title = theirs.sunk ? "Enemy ship sunk" : "Enemy ship not yet sunk";
-    item.append(yours, enemy);
-    els.fleetStatus.appendChild(item);
+/**
+ * One roster row: ship name plus a hull strip of per-cell segments. `own`
+ * rosters show live damage; the enemy roster only reveals segments once the
+ * ship is sunk, since that's all the player is told.
+ */
+function rosterRow(ship, { own }) {
+  const item = document.createElement("li");
+  item.className = `roster-row${ship.sunk ? " roster-sunk" : ""}`;
+
+  const name = document.createElement("span");
+  name.className = "roster-name";
+  name.textContent = ship.id;
+  item.appendChild(name);
+
+  const hull = document.createElement("span");
+  hull.className = "hull";
+  for (const cell of ship.cells) {
+    const segment = document.createElement("span");
+    const struck = own ? ship.hits.has(key(cell.row, cell.col)) : ship.sunk;
+    segment.className = `hull-segment${struck ? " hull-hit" : ""}`;
+    hull.appendChild(segment);
+  }
+  item.appendChild(hull);
+
+  const status = document.createElement("span");
+  status.className = "roster-status";
+  if (ship.sunk) {
+    status.textContent = "sunk";
+  } else if (own) {
+    status.textContent = `${ship.length - ship.hits.size}/${ship.length}`;
+  } else {
+    status.textContent = "afloat";
+  }
+  item.appendChild(status);
+
+  return item;
+}
+
+function renderRosters() {
+  const afloat = (board) => board.ships.filter((s) => !s.sunk).length;
+  for (const [container, board, own] of [
+    [els.yourFleet, state.playerBoard, true],
+    [els.enemyFleet, state.aiBoard, false],
+  ]) {
+    container.textContent = "";
+    for (const { id } of FLEET) {
+      const ship = board.ships.find((s) => s.id === id);
+      container.appendChild(rosterRow(ship, { own }));
+    }
+    const summary = document.createElement("li");
+    summary.className = "roster-summary";
+    summary.textContent = `${afloat(board)} of ${FLEET.length} ships afloat`;
+    container.appendChild(summary);
   }
 }
 
@@ -218,6 +314,15 @@ function describeResult(entry) {
 }
 
 function renderStatusLine() {
+  if (phase === "placement") {
+    const remaining = FLEET.length - layout.length;
+    els.statusLine.textContent =
+      placementMessage ||
+      (remaining > 0
+        ? `Deploy your fleet — ${remaining} ship${remaining === 1 ? "" : "s"} left to place.`
+        : "Fleet deployed. Start the battle when ready.");
+    return;
+  }
   if (isGameOver(state)) {
     els.statusLine.textContent =
       state.status === "player_won" ? "Enemy fleet destroyed." : "Your fleet is lost.";
@@ -244,9 +349,14 @@ function renderEndScreen() {
 }
 
 function render() {
+  if (phase === "placement") {
+    renderPlacement();
+    renderStatusLine();
+    return;
+  }
   renderBoard(els.aiBoard, state.aiBoard, { revealShips: false });
   renderBoard(els.playerBoard, state.playerBoard, { revealShips: true });
-  renderFleetStatus();
+  renderRosters();
   renderConfidence();
   renderExplain();
   renderShotCount();
@@ -319,6 +429,46 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Targeting-reticle beat before a shot resolves, then the impact burst.
+ * Purely decorative: every step is guarded so a DOM or timing failure can't
+ * stall a turn.
+ */
+async function playLockOn(container, cell) {
+  try {
+    const cellEl = cellElAt(container, cell.row, cell.col);
+    if (!cellEl) return;
+    cellEl.classList.add("fx-lock");
+    playEffect("fire");
+    await sleep(LOCK_ON_MS);
+    cellEl.classList.remove("fx-lock");
+  } catch {
+    /* decorative only */
+  }
+}
+
+function playImpact(container, cell, result) {
+  try {
+    const cellEl = cellElAt(container, cell.row, cell.col);
+    if (!cellEl) return;
+    const fx = result === "miss" ? "fx-splash" : "fx-boom";
+    cellEl.classList.add(fx);
+    if (result !== "miss") container.classList.add("board-shake");
+    if (result === "sunk") container.classList.add("board-sink");
+    playEffect(result === "no-op" ? "invalid" : result);
+    setTimeout(() => {
+      try {
+        cellEl.classList.remove(fx);
+        container.classList.remove("board-shake", "board-sink");
+      } catch {
+        /* element already gone */
+      }
+    }, IMPACT_MS);
+  } catch {
+    /* decorative only */
+  }
+}
+
 async function takeAiTurn() {
   const move = realChooseMove(state);
   if (!move || !move.cell) return;
@@ -327,25 +477,37 @@ async function takeAiTurn() {
   await sleep(HEATMAP_DWELL_MS);
   clearHeatmap();
 
-  const { newState } = fireAt(state, "player", move.cell);
+  await playLockOn(els.playerBoard, move.cell);
+  const { newState, result } = fireAt(state, "player", move.cell);
   annotateAiMove(newState, move, move.probabilityMap);
   state = newState;
   explainOpen = false;
   render();
+  playImpact(els.playerBoard, move.cell, result);
+  if (isGameOver(state)) playEffect(state.status === "player_won" ? "victory" : "defeat");
 }
 
 async function onPlayerShot(cell) {
   if (busy || isGameOver(state)) return;
-  const { newState, result } = fireAt(state, "ai", cell);
-  if (result === "no-op") return; // engine already decided this changes nothing
-  state = newState;
-  render();
-  if (isGameOver(state)) return;
+  if (state.aiBoard.shotsReceived.has(key(cell.row, cell.col))) {
+    playEffect("invalid");
+    return;
+  }
 
   busy = true;
   els.aiBoard.classList.add("board-locked");
   try {
-    await sleep(RESULT_PAUSE_MS);
+    await playLockOn(els.aiBoard, cell);
+    const { newState, result } = fireAt(state, "ai", cell);
+    if (result === "no-op") return; // engine already decided this changes nothing
+    state = newState;
+    render();
+    playImpact(els.aiBoard, cell, result);
+    if (isGameOver(state)) {
+      playEffect("victory");
+      return;
+    }
+    await sleep(RESULT_PAUSE_MS + IMPACT_MS);
     await takeAiTurn();
   } finally {
     busy = false;
@@ -368,21 +530,225 @@ function onPlayerBoardClick(event) {
   renderExplain();
 }
 
-function startNewGame() {
+// ---------------------------------------------------------------------------
+// Placement phase
+// ---------------------------------------------------------------------------
+
+function placedShip(id) {
+  return layout.find((s) => s.id === id) ?? null;
+}
+
+function nextUnplacedShipId() {
+  const pending = FLEET.find(({ id }) => !placedShip(id));
+  return pending ? pending.id : null;
+}
+
+function selectedFleetEntry() {
+  return FLEET.find(({ id }) => id === selectedShipId) ?? null;
+}
+
+function renderPlacementRoster() {
+  els.placementRoster.textContent = "";
+  for (const { id, length } of FLEET) {
+    const ship = placedShip(id);
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `roster-pick${id === selectedShipId ? " roster-pick-active" : ""}${
+      ship ? " roster-pick-placed" : ""
+    }`;
+    button.dataset.shipId = id;
+
+    const name = document.createElement("span");
+    name.className = "roster-name";
+    name.textContent = id;
+    const hull = document.createElement("span");
+    hull.className = "hull";
+    for (let i = 0; i < length; i++) {
+      const segment = document.createElement("span");
+      segment.className = "hull-segment";
+      hull.appendChild(segment);
+    }
+    const status = document.createElement("span");
+    status.className = "roster-status";
+    status.textContent = ship ? "deployed" : `${length}`;
+
+    button.append(name, hull, status);
+    item.appendChild(button);
+    els.placementRoster.appendChild(item);
+  }
+}
+
+function renderPlacementBoard() {
+  const occupied = new Map();
+  for (const ship of layout) {
+    for (const cell of ship.cells) occupied.set(key(cell.row, cell.col), ship.id);
+  }
+  for (const cellEl of els.placementBoard.children) {
+    const cellKey = key(Number(cellEl.dataset.row), Number(cellEl.dataset.col));
+    const shipId = occupied.get(cellKey) ?? null;
+    cellEl.classList.toggle("is-ship", Boolean(shipId));
+    cellEl.classList.remove("preview-ok", "preview-bad");
+    if (shipId) {
+      cellEl.dataset.shipId = shipId;
+    } else {
+      delete cellEl.dataset.shipId;
+    }
+  }
+}
+
+function renderPlacement() {
+  renderPlacementRoster();
+  renderPlacementBoard();
+  const entry = selectedFleetEntry();
+  els.placementHint.textContent = entry
+    ? `${entry.id} (${entry.length} cells), ${orientation}. Click a cell to drop its bow, press R to rotate, or click a deployed ship to pick it back up.`
+    : "All ships deployed. Click a deployed ship to reposition it, or start the battle.";
+  els.startBattle.disabled = layout.length !== FLEET.length;
+}
+
+function previewPlacement(row, col) {
+  const entry = selectedFleetEntry();
+  renderPlacementBoard();
+  if (!entry) return;
+  const cells = cellsForPlacement(row, col, entry.length, orientation);
+  const legal = isPlacementLegal(layout, cells, BOARD_SIZE, entry.id);
+  for (const cell of cells) {
+    const cellEl = cellElAt(els.placementBoard, cell.row, cell.col);
+    if (cellEl) cellEl.classList.add(legal ? "preview-ok" : "preview-bad");
+  }
+}
+
+function placeSelectedShip(row, col) {
+  const entry = selectedFleetEntry();
+  if (!entry) return;
+  const cells = cellsForPlacement(row, col, entry.length, orientation);
+  if (!isPlacementLegal(layout, cells, BOARD_SIZE, entry.id)) {
+    placementMessage = `The ${entry.id} doesn't fit there.`;
+    playEffect("invalid");
+    render();
+    return;
+  }
+  layout = [
+    ...layout.filter((s) => s.id !== entry.id),
+    { id: entry.id, length: entry.length, cells },
+  ];
+  placementMessage = "";
+  playEffect("place");
+  selectedShipId = nextUnplacedShipId() ?? entry.id;
+  render();
+}
+
+function pickUpShip(id) {
+  layout = layout.filter((s) => s.id !== id);
+  selectedShipId = id;
+  placementMessage = "";
+  playEffect("rotate");
+  render();
+}
+
+function onPlacementBoardClick(event) {
+  const cellEl = event.target.closest(".cell");
+  if (!cellEl) return;
+  startMusic();
+  if (cellEl.dataset.shipId) {
+    pickUpShip(cellEl.dataset.shipId);
+    return;
+  }
+  placeSelectedShip(Number(cellEl.dataset.row), Number(cellEl.dataset.col));
+}
+
+function rotateSelection() {
+  orientation = orientation === "horizontal" ? "vertical" : "horizontal";
+  placementMessage = "";
+  playEffect("rotate");
+  render();
+}
+
+function randomizeLayout() {
+  layout = randomFleetLayout(BOARD_SIZE);
+  selectedShipId = FLEET[0].id;
+  placementMessage = "Fleet scattered at random.";
+  playEffect("place");
+  render();
+}
+
+function clearLayout() {
+  layout = [];
+  selectedShipId = FLEET[0].id;
+  placementMessage = "Board cleared.";
+  playEffect("invalid");
+  render();
+}
+
+function startBattle() {
+  const { valid, error } = validateFleetLayout(layout, BOARD_SIZE);
+  if (!valid) {
+    placementMessage = error;
+    playEffect("invalid");
+    render();
+    return;
+  }
+  state = createGame(layout);
+  phase = "battle";
+  busy = false;
+  explainOpen = false;
+  placementMessage = "";
+  clearHeatmap();
+  els.placementScreen.hidden = true;
+  els.theatre.hidden = false;
+  startMusic();
+  playEffect("place");
+  render();
+}
+
+function enterPlacementPhase() {
+  phase = "placement";
   state = createGame();
+  layout = [];
+  orientation = "horizontal";
+  selectedShipId = FLEET[0].id;
+  placementMessage = "";
   busy = false;
   explainOpen = false;
   clearHeatmap();
   renderBattleReport("");
   renderEfficiencyStat("");
+  els.endScreen.hidden = true;
+  els.theatre.hidden = true;
+  els.placementScreen.hidden = false;
   render();
+}
+
+function renderMuteButton() {
+  const off = isMuted();
+  els.muteToggle.setAttribute("aria-pressed", String(off));
+  els.muteIcon.textContent = off ? "\u266A\u0338" : "\u266B";
+  els.muteLabel.textContent = off ? "Sound off" : "Sound on";
+}
+
+function onMuteToggle() {
+  toggleMuted();
+  if (!isMuted()) startMusic();
+  renderMuteButton();
+}
+
+function onKeyDown(event) {
+  if (phase !== "placement") return;
+  if (event.key === "r" || event.key === "R") {
+    event.preventDefault();
+    rotateSelection();
+  }
 }
 
 function init() {
   cacheElements();
-  buildGrid(els.aiBoard, { clickable: true });
-  buildGrid(els.playerBoard, { clickable: false });
+  buildGrid(els.aiBoard, { clickable: true, label: "Enemy cell" });
+  buildGrid(els.playerBoard, { clickable: false, label: "Your cell" });
+  buildGrid(els.placementBoard, { clickable: true, label: "Deployment cell" });
   buildHeatmapGrid();
+  initAudio();
+  renderMuteButton();
 
   els.aiBoard.addEventListener("click", (event) => {
     const cellEl = event.target.closest(".cell");
@@ -390,9 +756,30 @@ function init() {
     onPlayerShot({ row: Number(cellEl.dataset.row), col: Number(cellEl.dataset.col) });
   });
   els.playerBoard.addEventListener("click", onPlayerBoardClick);
-  els.newGame.addEventListener("click", startNewGame);
+  els.newGame.addEventListener("click", enterPlacementPhase);
 
-  startNewGame();
+  els.placementBoard.addEventListener("click", onPlacementBoardClick);
+  els.placementBoard.addEventListener("mouseover", (event) => {
+    const cellEl = event.target.closest(".cell");
+    if (!cellEl) return;
+    previewPlacement(Number(cellEl.dataset.row), Number(cellEl.dataset.col));
+  });
+  els.placementBoard.addEventListener("mouseleave", renderPlacementBoard);
+  els.placementRoster.addEventListener("click", (event) => {
+    const pick = event.target.closest(".roster-pick");
+    if (!pick) return;
+    selectedShipId = pick.dataset.shipId;
+    placementMessage = "";
+    render();
+  });
+  els.rotateShip.addEventListener("click", rotateSelection);
+  els.randomizeFleet.addEventListener("click", randomizeLayout);
+  els.clearFleet.addEventListener("click", clearLayout);
+  els.startBattle.addEventListener("click", startBattle);
+  els.muteToggle.addEventListener("click", onMuteToggle);
+  document.addEventListener("keydown", onKeyDown);
+
+  enterPlacementPhase();
 }
 
 if (typeof document !== "undefined") {

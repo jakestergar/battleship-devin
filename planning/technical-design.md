@@ -92,8 +92,18 @@ copy) the design:
 ## Function contracts
 
 **engine module**
-- `createGame(): GameState` — new game, both boards populated (random ship
-  placement per Open Questions resolution).
+- `createGame(playerFleetLayout?): GameState` — new game, both boards
+  populated. The AI board is always randomly placed; the player's board is
+  too unless a layout is supplied by the manual placement UI. An invalid
+  layout throws rather than silently corrupting the board.
+- `randomFleetLayout(size?): [{ id, length, cells }]` — a legal random
+  layout in the shape `createGame` accepts (seeds/re-rolls manual placement).
+- `validateFleetLayout(layout, size?): { valid, error }` — exactly the FLEET
+  ships, each a straight contiguous in-bounds run of its own length, no
+  overlaps. Returns a reason instead of throwing so the placement UI can
+  show it.
+- `cellsForPlacement(row, col, length, orientation): [cell]` — the cells a
+  ship would occupy from a bow position (shared with the placement preview).
 - `fireAt(state: GameState, board: "player" | "ai", cell): { newState, result }`
   — validates the shot (no-op + unchanged state if already fired upon per
   Functional Requirement 5), applies it, updates history, checks win
@@ -114,6 +124,16 @@ copy) the design:
 **ui module**
 - Renders `GameState.playerBoard` / `GameState.aiBoard` from data only —
   never computes hit/miss/win logic itself.
+- Owns a **placement phase** that precedes the game: the layout under
+  construction lives only in the UI, and the engine is handed the finished
+  layout via `createGame(layout)`. `GameState.status` therefore has no
+  "placing" value — there is no game until the fleet is confirmed.
+- Fleet rosters read ship `hits`/`sunk` straight off each board. The enemy
+  roster reveals hull damage only once a ship is `sunk`, matching what the
+  player is actually told.
+- Firing animations and audio (`src/audio.js`, Web Audio synthesis — no
+  binary assets) are additive layers: every entry point is guarded so a
+  failure degrades to a silent, unanimated but fully playable game.
 - On player click: calls `engine.fireAt`, then (if game not over) calls
   `ai.chooseMove` + `engine.fireAt` for the AI's turn, then re-renders.
 - Renders the heatmap overlay directly from the latest `HistoryEntry`'s

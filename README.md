@@ -26,12 +26,24 @@ including the bug-fix write-up once complete.
   playtest harness run at scale — see `scripts/harness.js`).
 - **Battle Report** — a generated post-game narrative summary.
 
+## Playing it
+- **Deploy your own fleet** — place each ship yourself on the strategy
+  panel (click to drop the bow, `R` to rotate, click a deployed ship to pick
+  it back up), or hit Randomize.
+- **Fleet rosters** — per-ship hull strips show which of your ships are
+  still afloat and how badly each is damaged; the enemy roster fills in as
+  you sink them.
+- **Firing feedback** — targeting reticle, splash on a miss, explosion and
+  board shake on a hit, plus synthesized music and sound effects (Web Audio,
+  no audio files) with a sound toggle in the header.
+
 ## Project structure
 ```
 src/
   engine.js   — pure game state & rules
   ai.js       — Bayesian Search Theory AI
-  ui.js       — rendering, heatmap, confidence meter, explain panel
+  ui.js       — rendering, placement phase, heatmap, rosters, explain panel
+  audio.js    — procedurally synthesized music and sound effects
 scripts/
   harness.js  — automated playtesting at scale (bug-hunting + baseline stats)
 planning/     — PRD, technical design, decision log, session briefs

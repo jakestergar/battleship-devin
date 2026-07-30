@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { BOARD_SIZE, createGame, fireAt } from "../src/engine.js";
-import { mockChooseMove, normalizeProbabilityMap } from "../src/ui.js";
+import { isPlacementLegal, mockChooseMove, normalizeProbabilityMap } from "../src/ui.js";
 
 function fullGrid(value) {
   return Array.from({ length: BOARD_SIZE }, () => new Array(BOARD_SIZE).fill(value));
@@ -58,4 +58,27 @@ test("normalizeProbabilityMap rejects unusable input instead of throwing", () =>
   ]) {
     assert.equal(normalizeProbabilityMap(input), null);
   }
+});
+
+test("isPlacementLegal blocks out-of-bounds and occupied cells", () => {
+  const layout = [
+    { id: "carrier", length: 5, cells: [0, 1, 2, 3, 4].map((col) => ({ row: 2, col })) },
+  ];
+
+  assert.equal(isPlacementLegal(layout, [{ row: 5, col: 5 }, { row: 5, col: 6 }]), true);
+  assert.equal(isPlacementLegal(layout, [{ row: 2, col: 4 }, { row: 3, col: 4 }]), false);
+  assert.equal(isPlacementLegal(layout, [{ row: 0, col: 9 }, { row: 0, col: 10 }]), false);
+  assert.equal(isPlacementLegal(layout, [{ row: -1, col: 0 }]), false);
+  assert.equal(isPlacementLegal(layout, []), false);
+  assert.equal(isPlacementLegal(layout, null), false);
+});
+
+test("isPlacementLegal ignores the ship currently being moved", () => {
+  const layout = [
+    { id: "carrier", length: 5, cells: [0, 1, 2, 3, 4].map((col) => ({ row: 2, col })) },
+  ];
+  const overlapping = [1, 2, 3, 4, 5].map((col) => ({ row: 2, col }));
+
+  assert.equal(isPlacementLegal(layout, overlapping), false);
+  assert.equal(isPlacementLegal(layout, overlapping, BOARD_SIZE, "carrier"), true);
 });

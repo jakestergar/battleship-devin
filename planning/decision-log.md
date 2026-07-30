@@ -297,6 +297,30 @@ Outcome** (filled in once known).
 - **Outcome:** PR #2 closed with an explanatory comment, branch deleted.
   `main` is unaffected — still the #3 + Decision 16 implementation.
 
+### 18. Manual fleet placement, fleet rosters, firing animations, synthesized audio
+- **Rationale:** Playtest feedback (with reference screenshots of the classic
+  HTML5 Battleship) flagged four gaps against the PRD's "feels like a real
+  game" bar: the player couldn't choose where their ships go, there was no
+  readable view of which of their ships were still afloat, no feedback when
+  a target was selected, and no sound. Kept the fixes in their own layers:
+  the placement layout lives only in `src/ui.js` and is handed to the engine
+  as `createGame(layout)`, so `GameState` gains no "placing" status and the
+  engine stays a pure rules module.
+- **Assessment: Good decision, with one deliberate trade-off.** Music and
+  effects are synthesized with the Web Audio API rather than shipped as
+  audio files — it keeps the repo asset-free and GitHub Pages-friendly and
+  avoids licensing questions, at the cost of an ambient drone rather than a
+  scored soundtrack. Every audio and animation entry point is guarded, so a
+  browser without Web Audio (or with autoplay blocked) still plays a fully
+  functional, silent game. Manual placement is click-to-place plus rotate /
+  randomize / clear rather than drag-and-drop: fewer failure modes on touch
+  and with the keyboard, and it matches the reference panel's controls.
+- **Outcome:** New `src/audio.js`; engine gained `randomFleetLayout`,
+  `validateFleetLayout`, and the optional `createGame(layout)` argument;
+  `src/ui.js` gained the placement phase, per-ship hull rosters for both
+  fleets, and reticle/splash/explosion animations. 25/25 tests passing,
+  verified end-to-end in a live browser preview.
+
 ---
 
 *(New decisions get appended below as they're made.)*

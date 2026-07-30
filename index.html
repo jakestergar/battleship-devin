@@ -9,13 +9,42 @@
   <body>
     <div class="frame">
       <header class="masthead">
-        <h1>Battleship</h1>
-        <p class="subtitle">Human vs. an AI that uses Bayesian Search Theory</p>
+        <div>
+          <h1>Battleship</h1>
+          <p class="subtitle">Human vs. an AI that uses Bayesian Search Theory</p>
+        </div>
+        <button id="mute-toggle" class="icon-button" type="button" aria-pressed="false">
+          <span id="mute-icon" aria-hidden="true">&#9835;</span>
+          <span id="mute-label">Sound on</span>
+        </button>
       </header>
 
-      <p id="status-line" class="status-line">Your move — fire on the enemy waters.</p>
+      <p id="status-line" class="status-line">Deploy your fleet to begin.</p>
 
-      <main class="theatre">
+      <section id="placement-screen" class="placement" hidden>
+        <div class="placement-head">
+          <h2>Strategy Panel</h2>
+          <p id="placement-hint" class="board-hint">
+            Pick a ship, then click a cell to drop its bow. Press R to rotate.
+          </p>
+        </div>
+        <div class="placement-body">
+          <ul id="placement-roster" class="placement-roster"></ul>
+          <div id="placement-board" class="board" role="grid" aria-label="Fleet deployment grid"></div>
+          <div class="placement-controls">
+            <button id="rotate-ship" class="button button-quiet" type="button">
+              Rotate <span class="key-hint">R</span>
+            </button>
+            <button id="randomize-fleet" class="button button-quiet" type="button">
+              Randomize
+            </button>
+            <button id="clear-fleet" class="button button-quiet" type="button">Clear</button>
+            <button id="start-battle" class="button" type="button" disabled>Start Battle</button>
+          </div>
+        </div>
+      </section>
+
+      <main id="theatre" class="theatre" hidden>
         <section class="board-panel">
           <h2>Enemy Waters</h2>
           <p class="board-hint">Click a cell to fire.</p>
@@ -35,6 +64,16 @@
 
         <aside class="console">
           <div class="console-block">
+            <h3>Your Fleet</h3>
+            <ul id="your-fleet" class="roster"></ul>
+          </div>
+
+          <div class="console-block">
+            <h3>Enemy Fleet</h3>
+            <ul id="enemy-fleet" class="roster"></ul>
+          </div>
+
+          <div class="console-block">
             <h3>AI Confidence</h3>
             <div class="meter" role="img" aria-label="AI confidence">
               <div id="confidence-bar" class="meter-fill"></div>
@@ -53,11 +92,6 @@
           <div class="console-block">
             <h3>Shots Fired</h3>
             <p id="shot-count" class="metric">You 0 · AI 0</p>
-          </div>
-
-          <div class="console-block">
-            <h3>Fleet Status</h3>
-            <ul id="fleet-status" class="fleet-status"></ul>
           </div>
         </aside>
       </main>

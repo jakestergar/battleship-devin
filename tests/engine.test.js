@@ -1,6 +1,24 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createGame, fireAt, isGameOver, FLEET, BOARD_SIZE } from "../src/engine.js";
+import {
+  createGame,
+  fireAt,
+  isGameOver,
+  randomFleetLayout,
+  validateFleetLayout,
+  FLEET,
+  BOARD_SIZE,
+} from "../src/engine.js";
+
+function layoutOf(overrides = {}) {
+  // A hand-built legal layout: every ship on its own row, starting at col 0.
+  return FLEET.map(({ id, length }, index) => ({
+    id,
+    length,
+    cells: Array.from({ length }, (_, i) => ({ row: index, col: i })),
+    ...(overrides[id] ?? {}),
+  }));
+}
 
 function key(row, col) {
   return `${row},${col}`;
@@ -75,6 +93,49 @@ test("isGameOver / status agree once a full fleet is sunk", () => {
   }
   assert.equal(isGameOver(current), true);
   assert.equal(current.status, "player_won");
+});
+
+test("randomFleetLayout produces layouts createGame accepts", () => {
+  for (let i = 0; i < 50; i++) {
+    const layout = randomFleetLayout();
+    assert.equal(validateFleetLayout(layout).valid, true);
+    const state = createGame(layout);
+    for (const { id, cells } of layout) {
+      const ship = state.playerBoard.ships.find((s) => s.id === id);
+      assert.deepEqual(new Set(ship.cells.map((c) => key(c.row, c.col))), new Set(cells.map((c) => key(c.row, c.col))));
+    }
+  }
+});
+
+test("createGame honours a manual player layout and still randomizes the AI", () => {
+  const layout = layoutOf();
+  const state = createGame(layout);
+  const carrier = state.playerBoard.ships.find((s) => s.id === "carrier");
+  assert.deepEqual(carrier.cells[0], { row: 0, col: 0 });
+  assert.equal(carrier.sunk, false);
+  assert.equal(carrier.hits.size, 0);
+  assert.equal(state.aiBoard.ships.length, FLEET.length);
+});
+
+test("validateFleetLayout rejects illegal layouts with a reason", () => {
+  const cases = {
+    "off the board": layoutOf({ carrier: { cells: [{ row: 0, col: 7 }, { row: 0, col: 8 }, { row: 0, col: 9 }, { row: 0, col: 10 }, { row: 0, col: 11 }] } }),
+    overlapping: layoutOf({ battleship: { cells: [{ row: 0, col: 0 }, { row: 0, col: 1 }, { row: 0, col: 2 }, { row: 0, col: 3 }] } }),
+    diagonal: layoutOf({ destroyer: { cells: [{ row: 8, col: 0 }, { row: 9, col: 1 }] } }),
+    "non-contiguous": layoutOf({ destroyer: { cells: [{ row: 8, col: 0 }, { row: 8, col: 4 }] } }),
+    "wrong length": layoutOf({ destroyer: { cells: [{ row: 8, col: 0 }] } }),
+  };
+
+  for (const [label, layout] of Object.entries(cases)) {
+    const { valid, error } = validateFleetLayout(layout);
+    assert.equal(valid, false, `${label} should be rejected`);
+    assert.equal(typeof error, "string");
+  }
+
+  assert.equal(validateFleetLayout([]).valid, false);
+  assert.equal(validateFleetLayout(null).valid, false);
+  assert.equal(validateFleetLayout(layoutOf().slice(1)).valid, false);
+  assert.throws(() => createGame(layoutOf().slice(1)), /Invalid fleet layout/);
 });
 
 test("fireAt does not mutate the input state (pure function)", () => {
