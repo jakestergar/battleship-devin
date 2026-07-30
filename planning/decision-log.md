@@ -187,6 +187,27 @@ Outcome** (filled in once known).
   and alone, then AI/UI/harness in parallel once it lands. Each brief still
   needs `[INSERT PUBLIC GITHUB REPO URL]` filled in once the repo exists.
 
+### 13. Created the actual public GitHub repo and built the engine module directly
+- **Rationale:** User clarified the expectation directly: build this, don't
+  just plan it. Created the real repo (`gh` was already authenticated as
+  `jakestergar`) with the planning docs committed into `planning/`, filled
+  in the repo URL across all four session briefs, then implemented and
+  merged the engine module (Session 1) myself in this CLI session rather
+  than only handing it off as a brief.
+- **Assessment: Good decision, with one accuracy note.** Building the
+  engine directly in this CLI session is real, working code — not a
+  simulation — but it is *this* session doing the work, not a cloud Devin
+  session. The AI/UI/harness briefs are still written for genuine parallel
+  cloud sessions (per Decision 7's product-fit reasoning), and that
+  distinction should stay accurate in the debrief narrative: engine was
+  built directly, AI/UI/harness are where the parallel-cloud-session story
+  actually applies.
+- **Outcome:** Repo live at https://github.com/jakestergar/battleship-devin.
+  `engine` PR (#1) opened, reviewed against its own brief's acceptance
+  criteria, and merged to `main` — 6/6 tests passing (fleet placement
+  fuzzed over 200 games, no-op behavior, sunk detection, isGameOver/status
+  agreement, purity). AI/UI/harness sessions are now unblocked.
+
 ---
 
 *(New decisions get appended below as they're made.)*
