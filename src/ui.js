@@ -175,6 +175,30 @@ function buildHeatmapGrid() {
   }
 }
 
+function frameBoard(element) {
+  const frame = document.createElement("div");
+  frame.className = "board-frame";
+  const topLabels = document.createElement("div");
+  topLabels.className = "board-axis board-axis-top";
+  for (let col = 0; col < BOARD_SIZE; col++) {
+    const label = document.createElement("span");
+    label.textContent = String(col + 1);
+    topLabels.appendChild(label);
+  }
+
+  const sideLabels = document.createElement("div");
+  sideLabels.className = "board-axis board-axis-side";
+  for (let row = 0; row < BOARD_SIZE; row++) {
+    const label = document.createElement("span");
+    label.textContent = String.fromCharCode(65 + row);
+    sideLabels.appendChild(label);
+  }
+
+  const parent = element.parentNode;
+  parent.replaceChild(frame, element);
+  frame.append(topLabels, sideLabels, element);
+}
+
 function cellElAt(container, row, col) {
   return container.children[row * BOARD_SIZE + col] ?? null;
 }
@@ -185,6 +209,42 @@ function shipCellState(board, cell) {
   );
   if (!ship) return { hasShip: false, sunk: false };
   return { hasShip: true, sunk: ship.sunk };
+}
+
+const SHIP_SHAPE_CLASSES = [
+  "ship-seg",
+  "ship-h",
+  "ship-v",
+  "ship-bow",
+  "ship-stern",
+];
+
+/**
+ * Classes that turn a plain cell into one segment of a drawn hull: which way
+ * the ship runs and whether this cell is its bow, stern, or midsection, so
+ * CSS can round the ends into a ship silhouette. Returns `null` off-ship.
+ */
+function shipShapeClasses(ships, row, col) {
+  const ship = ships.find((s) =>
+    s.cells.some((c) => c.row === row && c.col === col)
+  );
+  if (!ship) return null;
+  const horizontal =
+    ship.cells.length === 1 || ship.cells.every((c) => c.row === ship.cells[0].row);
+  const ordered = [...ship.cells].sort((a, b) =>
+    horizontal ? a.col - b.col : a.row - b.row
+  );
+  const index = ordered.findIndex((c) => c.row === row && c.col === col);
+  const classes = ["ship-seg", horizontal ? "ship-h" : "ship-v"];
+  if (index === 0) classes.push("ship-bow");
+  if (index === ordered.length - 1) classes.push("ship-stern");
+  return classes;
+}
+
+function applyShipShape(cellEl, ships, row, col) {
+  cellEl.classList.remove(...SHIP_SHAPE_CLASSES);
+  const classes = ships ? shipShapeClasses(ships, row, col) : null;
+  if (classes) cellEl.classList.add(...classes);
 }
 
 function latestAiEntry() {
@@ -203,6 +263,7 @@ function renderBoard(container, board, { revealShips }) {
     const { hasShip, sunk } = shipCellState(board, { row, col });
 
     cellEl.classList.toggle("is-ship", revealShips && hasShip && !fired);
+    applyShipShape(cellEl, revealShips && hasShip ? board.ships : null, row, col);
     cellEl.classList.toggle("is-miss", fired && !hasShip);
     cellEl.classList.toggle("is-hit", fired && hasShip && !sunk);
     cellEl.classList.toggle("is-sunk", fired && hasShip && sunk);
@@ -588,6 +649,12 @@ function renderPlacementBoard() {
     const cellKey = key(Number(cellEl.dataset.row), Number(cellEl.dataset.col));
     const shipId = occupied.get(cellKey) ?? null;
     cellEl.classList.toggle("is-ship", Boolean(shipId));
+    applyShipShape(
+      cellEl,
+      shipId ? layout : null,
+      Number(cellEl.dataset.row),
+      Number(cellEl.dataset.col)
+    );
     cellEl.classList.remove("preview-ok", "preview-bad");
     if (shipId) {
       cellEl.dataset.shipId = shipId;
@@ -747,6 +814,9 @@ function init() {
   buildGrid(els.playerBoard, { clickable: false, label: "Your cell" });
   buildGrid(els.placementBoard, { clickable: true, label: "Deployment cell" });
   buildHeatmapGrid();
+  frameBoard(els.aiBoard);
+  frameBoard(els.playerBoard.parentElement);
+  frameBoard(els.placementBoard);
   initAudio();
   renderMuteButton();
 

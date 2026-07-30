@@ -324,3 +324,17 @@ Outcome** (filled in once known).
 ---
 
 *(New decisions get appended below as they're made.)*
+
+### 16. Frame boards with shared coordinate axes and hull-shaped segments
+
+The UI now wraps each board in a shared `.board-frame` rather than adding
+coordinate labels into the board's 100-cell grid. This keeps labels aligned
+with the existing cell and gap dimensions, while framing the player
+`.board-stack` preserves the heatmap's absolute overlay relationship. Ship
+segments use directional classes from the existing UI helper, with CSS-only
+metallic/deployment hull treatments so hidden enemy ships remain untouched.
+
+**Assessment: Good decision.** The labels are structural siblings of each
+board, so the grid's cell indexing and event handling remain unchanged. The
+only visual risk is narrow-screen overflow, which matches the existing fixed
+cell sizing and can be addressed separately if responsive behavior is needed.
