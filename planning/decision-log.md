@@ -413,3 +413,53 @@ things to keep honest: fair information is unchanged — enemy vessels are drawn
 only once `sunk`, which the player already knows — and the layer is additive,
 wrapped so that a failure leaves the cell states, which convey ship/hit/miss/
 sunk on their own, as the fallback.
+
+### 18. Surveyed the public Battleship landscape, then chose three "legible AI" features over decorative polish
+- **Rationale:** Before committing more build time, searched GitHub across
+  animation/3D/canvas/WebGL/general Battleship queries to establish what the
+  competitive bar actually is, rather than assuming.
+- **Findings:** The ceiling is `bigardone/phoenix-battleship` (523★,
+  Elixir/Phoenix realtime multiplayer), followed by terminal implementations
+  in Rust (~90★) and a cluster of Odin Project curriculum solutions (~24★).
+  Anything self-describing as animated, 3D, canvas, or WebGL tops out at
+  **six stars**. Notably, the genuinely creative work in public is
+  *conceptual*, not visual — zero-knowledge-proof implementations
+  (`risc0/battleship-example`, `Shigoto-dev19/ZK-Battleships-Solana`) are the
+  standouts. No public implementation treats the AI's reasoning as the
+  feature.
+- **Assessment: Good decision to survey first.** It falsified the implicit
+  assumption that we'd be competing on visual polish. Two conclusions: the
+  visual bar is low enough that modest polish differentiates, and the real
+  open gap is legibility of the AI — which is where this repo already has
+  unique assets (a fair-by-construction AI, a probability map, a history log).
+  Chose three features on that axis:
+  1. **Provable fairness** — surface the existing `gatherFairKnowledge`
+     guarantee as a live, in-browser check (shuffle unsunk ships, recompute,
+     compare hashes). The ZK repos confirm players genuinely care about this;
+     nobody has made it interactive. Doubles as a direct analogy for trust in
+     autonomous agents.
+  2. **AI vs AI exhibition match** — two AIs, dual live heatmaps. Highest
+     visual payoff per unit of build risk, since it reuses the existing
+     engine/AI and owns its own state.
+  3. **Post-game coach** — replay the player's shots through the probability
+     engine and grade them against Bayesian-optimal. Reframes the AI as a
+     teaching tool and is a literal instance of auditing human vs. machine
+     decision quality.
+- **Honest risk:** this is three more features on top of an unfinished
+  harness, an undeployed GitHub Pages site, and a missing `BUGS.md` — with
+  the M1 demo and leadership presentation still at zero. Battleship is 10 of
+  50 evaluated minutes. Capping the creative work here and treating these
+  three as the last additions is the discipline this decision depends on.
+- **Parallelisation decision:** all three features want to render, and
+  `src/ui.js` is already 1,056 lines — three concurrent sessions editing it
+  would collide. Mitigated structurally: each brief mandates a self-contained
+  module (`fairness.js` / `exhibition.js` / `coach.js`) exposing a single
+  `mount*()` entry point, and permits **at most one import line and one call
+  site** in `ui.js` plus one container in `index.html`. Any conflict is then
+  a one-line resolution. Each brief also carries an explicit "create exactly
+  one session" warning, guarding against the duplicate-dispatch failure in
+  Decision 17.
+- **Outcome:** `planning/session-briefs/05-fairness-brief.md`,
+  `06-exhibition-brief.md`, `07-coach-brief.md` written and ready to
+  dispatch. Sessions 5-7 can run in parallel with each other and with the
+  still-unstarted harness (Session 4).
