@@ -208,6 +208,36 @@ Outcome** (filled in once known).
   fuzzed over 200 games, no-op behavior, sunk detection, isGameOver/status
   agreement, purity). AI/UI/harness sessions are now unblocked.
 
+### 14. AI module built with a single weighting pass instead of a hunt/target mode
+- **Rationale:** `02-ai-brief.md` specifies the boost for placements covering
+  unresolved hits as part of the same enumeration pass rather than a separate
+  "target mode." Implemented it that way: every valid remaining-ship
+  placement contributes `100^N` (N = unresolved-hit cells it covers) to each
+  cell it passes through, so a placement that explains a known hit outweighs
+  every placement that doesn't, and the AI switches from hunting to finishing
+  a ship off with no mode flag, no state, and no extra branch to get wrong.
+- **Also decided:** the "no cheating" constraint is enforced structurally,
+  not by convention. All AI input goes through one `gatherFairKnowledge`
+  helper that reads only `playerBoard.shotsReceived`, `state.history`
+  (filtered to the AI's own shots), and the `cells` of ships whose `sunk`
+  result appears in that history. A test proves it: relocating every unsunk
+  ship in a fixture leaves `computeProbabilityMap`'s output byte-identical.
+  Note the AI deliberately does not read `ship.sunk` either — it derives
+  which ships are sunk from history, which is strictly public information.
+- **Assessment: Good decision.** Cost: three enumeration passes per move
+  (map, stats for the explanation, knowledge) instead of one. That's ~300
+  placements on a 10x10 board, so it's irrelevant in practice, and keeping
+  `computeProbabilityMap` a pure function the UI can call independently is
+  worth more than the cycles. Honest risk: the `100^N` factor is a magic
+  number — it works because the board is small, and it would need revisiting
+  (e.g. log-space weights) for a much larger board.
+- **Outcome:** `src/ai.js` with `computeProbabilityMap` + `chooseMove`, 11
+  new tests. Measured over 200 self-played games: **43.9 average shots to
+  clear the board** (worst case 68 of 100 cells). The harness session will
+  produce the official random baseline, but a uniform-random searcher needs
+  ~95 shots, so this is roughly a 54% improvement — real, measured, and
+  reportable in the debrief rather than asserted.
+
 ---
 
 *(New decisions get appended below as they're made.)*
