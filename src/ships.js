@@ -128,8 +128,8 @@ const DRAWINGS = {
  * empty string for an unknown id so a fleet change can't break rendering.
  */
 export function shipSvg(id, length) {
-  const draw = DRAWINGS[id];
-  if (!draw || !length) return "";
+  const draw = Object.prototype.hasOwnProperty.call(DRAWINGS, id) ? DRAWINGS[id] : null;
+  if (!draw || !Number.isInteger(length) || length <= 0) return "";
   const width = length * UNIT;
   return `<svg class="ship-art ship-art-${id}" viewBox="0 0 ${width} ${UNIT}" width="${width}" height="${UNIT}" aria-hidden="true" focusable="false">${draw(
     width
