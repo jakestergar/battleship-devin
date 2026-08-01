@@ -279,3 +279,40 @@ test("explanations cite the unresolved hit when finishing a ship off", () => {
   const hunting = chooseMove(makeState());
   assert.match(hunting.explanation, /highest-probability cell across \d+ possible/);
 });
+
+/** Every cell shot at as a miss except the ones listed. */
+function allMissedExcept(freeCells) {
+  const free = new Set(freeCells.map((c) => key(c.row, c.col)));
+  const shots = [];
+  for (let row = 0; row < BOARD_SIZE; row++) {
+    for (let col = 0; col < BOARD_SIZE; col++) {
+      if (!free.has(key(row, col))) shots.push({ row, col, result: "miss" });
+    }
+  }
+  return shots;
+}
+
+test("a state no placement explains still yields a legal unexplored shot", () => {
+  // Only two isolated cells are left, so not even the 2-cell destroyer fits.
+  const free = [
+    { row: 0, col: 0 },
+    { row: 0, col: 2 },
+  ];
+  const state = makeState(allMissedExcept(free));
+
+  assert.equal(computeProbabilityMap(state).flat().reduce((a, b) => a + b, 0), 0);
+
+  for (let i = 0; i < 20; i++) {
+    const move = chooseMove(state);
+    assert.ok(
+      free.some((c) => c.row === move.cell.row && c.col === move.cell.col),
+      `chose an already-attacked cell: ${key(move.cell.row, move.cell.col)}`
+    );
+    assert.equal(move.confidence, 0);
+    assert.match(move.explanation, /no ship placement is consistent with the shots so far/);
+  }
+});
+
+test("chooseMove returns null once every cell has been fired at", () => {
+  assert.equal(chooseMove(makeState(allMissedExcept([]))), null);
+});
