@@ -56,6 +56,12 @@ function randomInt(n) {
   return Math.floor(Math.random() * n);
 }
 
+// A full-board restart is rare (the largest-first order almost always
+// succeeds on the first attempt), so an unbounded retry loop only ever spins
+// forever on a fleet/board combination that cannot be satisfied at all. Cap
+// it and fail loudly instead of hanging the caller.
+const MAX_PLACEMENT_ATTEMPTS = 1000;
+
 /**
  * Places the full fleet on a board of the given size using a largest-ship-
  * first, enumerate-and-backtrack strategy: process ships largest to
@@ -67,7 +73,7 @@ function randomInt(n) {
 function placeFleet(size) {
   const shipsLargestFirst = [...FLEET].sort((a, b) => b.length - a.length);
 
-  while (true) {
+  for (let attempt = 0; attempt < MAX_PLACEMENT_ATTEMPTS; attempt++) {
     const occupied = new Set();
     const ships = [];
     let failed = false;
@@ -90,6 +96,11 @@ function placeFleet(size) {
     }
     // else: retry the whole board from scratch
   }
+
+  throw new Error(
+    `Could not place the fleet on a ${size}x${size} board after ` +
+      `${MAX_PLACEMENT_ATTEMPTS} attempts.`
+  );
 }
 
 function createBoard(size, ships = placeFleet(size)) {
@@ -229,14 +240,41 @@ function boardFullySunk(board) {
   return board.ships.every((s) => s.sunk);
 }
 
+function isCellOnBoard(cell, size) {
+  return (
+    Boolean(cell) &&
+    Number.isInteger(cell.row) &&
+    Number.isInteger(cell.col) &&
+    inBounds(cell, size)
+  );
+}
+
 /**
  * Fires at `cell` on `targetBoard` ("player" or "ai") within `state`.
  * Pure: returns { newState, result } and never mutates `state`.
  * Firing at an already-fired-upon cell is a no-op.
+ *
+ * An unknown target board, an off-board cell, or a shot after the game has
+ * ended are caller bugs rather than game events, so they throw: resolving
+ * them into a plausible-looking shot would silently corrupt the board and
+ * every statistic derived from it.
  */
 export function fireAt(state, targetBoard, cell) {
-  const cellKey = key(cell.row, cell.col);
+  if (targetBoard !== "player" && targetBoard !== "ai") {
+    throw new Error(
+      `fireAt: target board must be "player" or "ai", got ${JSON.stringify(targetBoard)}.`
+    );
+  }
+  if (isGameOver(state)) {
+    throw new Error(`fireAt: the game is already over (status "${state.status}").`);
+  }
+
   const board = targetBoard === "player" ? state.playerBoard : state.aiBoard;
+  if (!isCellOnBoard(cell, board.size)) {
+    throw new RangeError(`fireAt: ${JSON.stringify(cell)} is not a cell on the board.`);
+  }
+
+  const cellKey = key(cell.row, cell.col);
 
   if (board.shotsReceived.has(cellKey)) {
     return { newState: state, result: "no-op" };

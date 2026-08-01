@@ -107,7 +107,11 @@ copy) the design:
 - `fireAt(state: GameState, board: "player" | "ai", cell): { newState, result }`
   — validates the shot (no-op + unchanged state if already fired upon per
   Functional Requirement 5), applies it, updates history, checks win
-  condition, flips turn.
+  condition, flips turn. Repeating a shot is a legal game event and stays a
+  no-op; an unknown target board, a cell that is not an in-bounds integer
+  pair, or a shot after `status` has left `"in_progress"` are caller bugs and
+  **throw**, since resolving them into a plausible-looking shot would corrupt
+  the board and every statistic derived from it.
 - `isGameOver(state): boolean`
 
 **ai module**
@@ -179,6 +183,16 @@ copy) the design:
 - Output feeds two things: (1) the required bug-fix documentation, and
   (2) the precomputed random-baseline average used by the Tier-1 efficiency
   benchmark (run once with a random-move AI variant for comparison).
+
+**errors module**
+- `reportError(scope, error)` / `attempt(scope, fn, fallback?)` — the single
+  place a contained failure is recorded. The additive layers (audio,
+  animation, heatmap, fleet art) still degrade rather than propagate per the
+  NFRs, but they route through here so the failure is visible in the console
+  with the scope that produced it instead of vanishing into an empty catch.
+  The engine, the AI, and the turn loop deliberately do **not** contain their
+  failures this way: those propagate, and the UI surfaces them on the status
+  line.
 
 **reporting module**
 - `generateBattleReport(state: GameState, baselineAvgShots: number): string`

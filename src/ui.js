@@ -12,6 +12,7 @@ import {
   validateFleetLayout,
 } from "./engine.js";
 import { chooseMove as realChooseMove } from "./ai.js";
+import { attempt, reportError } from "./errors.js";
 import { shipSvg } from "./ships.js";
 import {
   initAudio,
@@ -121,6 +122,21 @@ const els = {};
 let state = null;
 let busy = false;
 let explainOpen = false;
+// Set when something the player needs to know about went wrong; owns the
+// status line until the next action clears it.
+let failureMessage = null;
+
+/**
+ * Reports a failure the player has to be told about: the console gets the
+ * error, the status line gets `message`. Used for anything that breaks the
+ * turn itself, as opposed to the decorative layers, which degrade quietly
+ * (but still report) through `reportError`.
+ */
+function reportFailure(scope, error, message) {
+  reportError(scope, error);
+  failureMessage = message;
+  attempt("ui: showing the failure message", renderStatusLine);
+}
 
 // Placement-phase state. The engine is only handed a layout once the player
 // confirms it, so there is no "placing" game status to model in engine.js.
@@ -273,15 +289,21 @@ function shipBox(boardEl, ship) {
  * already convey ship/hit/miss/sunk on their own — as the fallback.
  */
 function renderFleetArt(overlayEl, boardEl, ships) {
+  if (!overlayEl) return;
   try {
-    if (!overlayEl) return;
     overlayEl.textContent = "";
-    if (!ships) return;
+  } catch (error) {
+    reportError("ui: clearing the fleet art overlay", error);
+    return;
+  }
+  if (!ships) return;
 
-    for (const ship of ships) {
+  // Per ship, so one undrawable vessel costs only its own art.
+  for (const ship of ships) {
+    attempt(`ui: drawing the ${ship?.id ?? "unknown"}`, () => {
       const box = shipBox(boardEl, ship);
       const markup = shipSvg(ship.id, ship.cells.length);
-      if (!box || !markup) continue;
+      if (!box || !markup) return;
 
       const wrap = document.createElement("div");
       wrap.className = "ship-figure";
@@ -298,9 +320,7 @@ function renderFleetArt(overlayEl, boardEl, ships) {
       }
       wrap.innerHTML = markup;
       overlayEl.appendChild(wrap);
-    }
-  } catch {
-    /* decorative layer — the cell states already carry the game state */
+    });
   }
 }
 
@@ -458,6 +478,11 @@ function describeResult(entry) {
 }
 
 function renderStatusLine() {
+  els.statusLine.classList.toggle("status-error", Boolean(failureMessage));
+  if (failureMessage) {
+    els.statusLine.textContent = failureMessage;
+    return;
+  }
   if (phase === "placement") {
     const remaining = FLEET.length - layout.length;
     els.statusLine.textContent =
@@ -526,20 +551,16 @@ function renderLaunchPoint() {
 
 /** Integration hook: a later pass calls this with the generated report text. */
 export function renderBattleReport(text) {
-  try {
+  attempt("ui: rendering the battle report", () => {
     if (els.battleReport) els.battleReport.textContent = text;
-  } catch {
-    /* additive layer — never break the game */
-  }
+  });
 }
 
 /** Integration hook: a later pass calls this with the efficiency stat text. */
 export function renderEfficiencyStat(text) {
-  try {
+  attempt("ui: rendering the efficiency stat", () => {
     if (els.efficiencyStat) els.efficiencyStat.textContent = text;
-  } catch {
-    /* additive layer — never break the game */
-  }
+  });
 }
 
 function showHeatmap(map) {
@@ -556,17 +577,16 @@ function showHeatmap(map) {
       }
     }
     els.heatmap.classList.add("heatmap-visible");
-  } catch {
+  } catch (error) {
+    reportError("ui: rendering the heatmap overlay", error);
     clearHeatmap();
   }
 }
 
 function clearHeatmap() {
-  try {
-    els.heatmap.classList.remove("heatmap-visible");
-  } catch {
-    /* nothing to clean up */
-  }
+  attempt("ui: hiding the heatmap overlay", () =>
+    els.heatmap.classList.remove("heatmap-visible")
+  );
 }
 
 function annotateAiMove(nextState, move, probabilityMap) {
@@ -574,15 +594,14 @@ function annotateAiMove(nextState, move, probabilityMap) {
   // of the AI module); the UI attaches the decision data to the turn the
   // engine just recorded so the heatmap/confidence/explain layers can read it
   // back out of history as the data contract specifies.
-  try {
+  // Metadata is optional — a failure here must not stop the turn.
+  attempt("ui: attaching the AI's decision data to the turn", () => {
     const entry = nextState.history[nextState.history.length - 1];
     if (!entry || entry.actor !== "ai") return;
     entry.probabilityMapSnapshot = probabilityMap ?? null;
     entry.confidence = typeof move.confidence === "number" ? move.confidence : null;
     entry.explanation = typeof move.explanation === "string" ? move.explanation : null;
-  } catch {
-    /* metadata is optional — a failure here must not stop the turn */
-  }
+  });
 }
 
 function sleep(ms) {
@@ -642,7 +661,8 @@ function flyMissile(sourceEl, targetEl) {
       });
       // Backstop in case the animation never reports finishing.
       setTimeout(arrive, MISSILE_MS + 400);
-    } catch {
+    } catch (error) {
+      reportError("ui: animating the missile", error);
       arrive();
     }
   });
@@ -670,19 +690,17 @@ function playImpact(container, cell, result, { own = false } = {}) {
 
     if (own && result !== "miss") klaxonFlash();
     playEffect(result === "no-op" ? "invalid" : result);
-  } catch {
-    /* decorative only */
+  } catch (error) {
+    reportError("ui: playing the impact effect", error);
   }
 }
 
 /** Scan sweep while the opponent is thinking. */
 function setScanning(on) {
-  try {
+  attempt("ui: toggling the scan sweep", () => {
     const panel = els.playerBoard?.closest(".board-panel");
     if (panel) panel.classList.toggle("bs-scanning", on);
-  } catch {
-    /* decorative only */
-  }
+  });
 }
 
 /**
@@ -713,9 +731,32 @@ function setUpReticle() {
   els.aiBoard.addEventListener("mouseleave", () => hideReticle(reticle));
 }
 
-async function takeAiTurn() {
-  const move = realChooseMove(state);
-  if (!move || !move.cell) return;
+/**
+ * The AI's move, or `null` if neither the AI module nor the random fallback
+ * can produce one. A failure in the Bayesian layer costs the AI its
+ * reasoning, not its turn: the fallback keeps the game playable and the real
+ * error goes to the console rather than disappearing.
+ */
+function chooseAiMove() {
+  try {
+    const move = realChooseMove(state);
+    if (move && move.cell) return move;
+    reportError(
+      "ai: choosing a move",
+      new Error("chooseMove returned no cell for an unfinished board")
+    );
+  } catch (error) {
+    reportError("ai: choosing a move", error);
+  }
+  const fallback = attempt("ai: falling back to a random legal shot", () =>
+    mockChooseMove(state)
+  );
+  return fallback && fallback.cell ? fallback : null;
+}
+
+async function runAiTurn() {
+  const move = chooseAiMove();
+  if (!move) throw new Error("no AI move available");
 
   setScanning(true);
   showHeatmap(move.probabilityMap);
@@ -737,13 +778,40 @@ async function takeAiTurn() {
   if (isGameOver(state)) playEffect(state.status === "player_won" ? "victory" : "defeat");
 }
 
+/**
+ * Runs the AI's turn, handing the turn back to the player if it cannot be
+ * completed. An unresolved AI turn would otherwise strand the game: the
+ * player is locked out while it is the AI's move, and the AI never moves.
+ */
+async function takeAiTurn() {
+  try {
+    await runAiTurn();
+  } catch (error) {
+    if (!isGameOver(state) && state.turn === "ai") {
+      state = { ...state, turn: "player" };
+    }
+    setScanning(false);
+    clearHeatmap();
+    reportFailure(
+      "ui: taking the AI's turn",
+      error,
+      "The AI could not complete its turn and forfeits this shot. Fire again."
+    );
+    attempt("ui: re-rendering after a failed AI turn", render);
+  }
+}
+
 async function onPlayerShot(cell) {
-  if (busy || isGameOver(state)) return;
+  if (!state || busy || isGameOver(state)) return;
+  // The AI's turn only ends when its shot resolves; firing into it would put
+  // two player shots on the board in a row.
+  if (state.turn !== "player") return;
   if (state.aiBoard.shotsReceived.has(key(cell.row, cell.col))) {
     playEffect("invalid");
     return;
   }
 
+  failureMessage = null;
   busy = true;
   els.aiBoard.classList.add("board-locked");
   if (els.reticle) hideReticle(els.reticle);
@@ -766,6 +834,16 @@ async function onPlayerShot(cell) {
     }
     await sleep(RESULT_PAUSE_MS + IMPACT_MS);
     await takeAiTurn();
+  } catch (error) {
+    // The turn is the one thing that must not fail silently: the engine and
+    // the AI are the game, so surface the break instead of leaving the player
+    // clicking a board that no longer responds.
+    reportFailure(
+      "ui: resolving the turn",
+      error,
+      "That turn could not be resolved. The board is unchanged — try firing again, or start a new game."
+    );
+    attempt("ui: re-rendering after a failed turn", render);
   } finally {
     busy = false;
     els.aiBoard.classList.remove("board-locked");
@@ -947,7 +1025,21 @@ function startBattle() {
     render();
     return;
   }
-  state = createGame(layout);
+
+  let newGame;
+  try {
+    newGame = createGame(layout);
+  } catch (createError) {
+    reportFailure(
+      "ui: creating the game",
+      createError,
+      "The battle could not be started. Try randomizing your fleet, then start again."
+    );
+    return;
+  }
+
+  failureMessage = null;
+  state = newGame;
   phase = "battle";
   busy = false;
   explainOpen = false;
@@ -961,8 +1053,21 @@ function startBattle() {
 }
 
 function enterPlacementPhase() {
+  let freshGame;
+  try {
+    freshGame = createGame();
+  } catch (error) {
+    reportFailure(
+      "ui: preparing a new board",
+      error,
+      "A new board could not be prepared. Reload the page to try again."
+    );
+    return;
+  }
+
+  failureMessage = null;
   phase = "placement";
-  state = createGame();
+  state = freshGame;
   layout = [];
   orientation = "horizontal";
   selectedShipId = FLEET[0].id;
@@ -999,8 +1104,60 @@ function onKeyDown(event) {
   }
 }
 
-function init() {
+// Every element the code below dereferences unconditionally. A missing id
+// used to surface as a bare TypeError from deep inside a render, leaving a
+// blank page; naming the gaps up front makes it diagnosable.
+const REQUIRED_ELEMENTS = [
+  "aiBoard",
+  "playerBoard",
+  "heatmap",
+  "statusLine",
+  "confidenceBar",
+  "confidenceValue",
+  "explainPanel",
+  "shotCount",
+  "yourFleet",
+  "enemyFleet",
+  "endScreen",
+  "endTitle",
+  "endSummary",
+  "newGame",
+  "theatre",
+  "placementScreen",
+  "placementBoard",
+  "placementRoster",
+  "placementHint",
+  "rotateShip",
+  "randomizeFleet",
+  "clearFleet",
+  "startBattle",
+  "muteToggle",
+  "muteIcon",
+  "muteLabel",
+];
+
+function assertRequiredElements() {
+  const missing = REQUIRED_ELEMENTS.filter((name) => !els[name]);
+  if (missing.length > 0) {
+    throw new Error(`index.html is missing required element(s): ${missing.join(", ")}`);
+  }
+}
+
+/** Last resort: the game cannot run at all, so say so on the page. */
+function showStartupFailure(error) {
+  reportError("ui: starting the game", error);
+  attempt("ui: showing the start-up failure", () => {
+    const line = document.getElementById("status-line");
+    if (!line) return;
+    line.textContent =
+      "The game failed to start. Reload the page — the browser console has the details.";
+    line.classList.add("status-error");
+  });
+}
+
+function setUp() {
   cacheElements();
+  assertRequiredElements();
   buildGrid(els.aiBoard, { clickable: true, label: "Enemy cell" });
   buildGrid(els.playerBoard, { clickable: false, label: "Your cell" });
   buildGrid(els.placementBoard, { clickable: true, label: "Deployment cell" });
@@ -1045,6 +1202,14 @@ function init() {
   document.addEventListener("keydown", onKeyDown);
 
   enterPlacementPhase();
+}
+
+function init() {
+  try {
+    setUp();
+  } catch (error) {
+    showStartupFailure(error);
+  }
 }
 
 if (typeof document !== "undefined") {

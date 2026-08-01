@@ -463,3 +463,37 @@ sunk on their own, as the fallback.
   `06-exhibition-brief.md`, `07-coach-brief.md` written and ready to
   dispatch. Sessions 5-7 can run in parallel with each other and with the
   still-unstarted harness (Session 4).
+
+### 19. Error handling: contain failures in the additive layers, propagate them in the game layer
+
+- **Context:** the graceful-degradation NFR (`planning/battleship-prd.md` §5)
+  had been implemented as bare `catch {}` blocks. That protected gameplay
+  from the audio/animation/heatmap layers, but it also erased every failure —
+  nothing reached the console, so a broken effect was indistinguishable from
+  a working one. Worse, the same instinct had been applied unevenly: the
+  layers that *are* the game (engine, AI, turn loop) had no handling at all.
+- **Decision:** split the two cases explicitly.
+  - *Additive layers* keep degrading, but every contained failure now goes
+    through `reportError`/`attempt` in the new `src/errors.js`, so it is
+    visible in the console with the scope that produced it. Fleet art is
+    contained per ship instead of per board, so one undrawable vessel no
+    longer costs the whole overlay.
+  - *Game layers* propagate. `fireAt` now rejects an unknown target board, an
+    off-board or malformed cell, and a shot after the game has ended, rather
+    than silently recording a shot that corrupts the board and every
+    statistic derived from it. `placeFleet`'s unbounded retry loop is capped
+    and throws instead of spinning forever.
+  - *The turn loop* catches and reports to the player. A throw in
+    `chooseMove` or `fireAt` used to escape as an unhandled rejection: the
+    game was left on the AI's turn with no way to advance, and the player was
+    told nothing. The AI now falls back to a random legal shot if its
+    reasoning fails, forfeits the turn if even that fails, and any broken
+    turn shows on the status line.
+- **Assessment: good, with one judgement call worth flagging.** Making
+  `fireAt` throw is a contract change (documented in
+  `planning/technical-design.md`): callers that previously got a quiet
+  no-op-shaped result for garbage input now get an exception. That is the
+  point — the UI already checks bounds and turn ownership before firing, so
+  anything reaching the engine malformed is a bug we want to see. The
+  `state.turn !== "player"` guard in `onPlayerShot` closes the related hole
+  where a failed AI turn let the player fire twice in a row.

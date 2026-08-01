@@ -95,10 +95,20 @@ export function launchMissile(
     fill: "forwards",
   });
 
-  anim.onfinish = () => {
+  // A cancelled animation never fires `onfinish`, which used to leave the
+  // missile node on the board forever and the shot unreported. Both paths
+  // land here, and only the first one counts.
+  let settled = false;
+  const settle = () => {
+    if (settled) return;
+    settled = true;
     missile.remove();
     if (onArrive) onArrive();
   };
+
+  anim.onfinish = settle;
+  anim.oncancel = settle;
+  anim.onremove = settle;
 
   return anim;
 }
