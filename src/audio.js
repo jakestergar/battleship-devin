@@ -4,6 +4,8 @@
 // the browser's autoplay policy, or throws — audio is a purely additive
 // layer and must never break gameplay (see planning/battleship-prd.md §5).
 
+import { attempt } from "./safe.js";
+
 const STORAGE_KEY = "battleship:muted";
 
 // A minor-ish naval drone: root, fifth, minor third, octave (Hz).
@@ -23,19 +25,12 @@ let muted = false;
 let started = false;
 
 function readStoredMute() {
-  try {
-    return localStorage.getItem(STORAGE_KEY) === "true";
-  } catch {
-    return false;
-  }
+  return attempt(() => localStorage.getItem(STORAGE_KEY) === "true", () => false);
 }
 
 function storeMute(value) {
-  try {
-    localStorage.setItem(STORAGE_KEY, String(value));
-  } catch {
-    /* private mode / disabled storage — mute is just not remembered */
-  }
+  // Private mode / disabled storage — mute is just not remembered.
+  attempt(() => localStorage.setItem(STORAGE_KEY, String(value)));
 }
 
 function ensureContext() {
@@ -93,15 +88,13 @@ function startPadDrone() {
 }
 
 function stepMelody() {
-  try {
+  attempt(() => {
     const step = MELODY[melodyStep % MELODY.length];
     melodyStep++;
     if (step !== null) {
       playPadNote(semitone(MELODY_ROOT, step), ctx.currentTime + 0.02, 1.8);
     }
-  } catch {
-    stopMusic();
-  }
+  }, stopMusic);
 }
 
 /**
@@ -109,25 +102,26 @@ function stepMelody() {
  * keypress) or the browser's autoplay policy will keep the context suspended.
  */
 export function startMusic() {
-  try {
-    if (!ensureContext()) return;
-    if (ctx.state === "suspended") ctx.resume();
-    if (started) return;
-    started = true;
-    startPadDrone();
-    stepMelody();
-    melodyTimer = setInterval(stepMelody, BEAT_MS);
-  } catch {
-    started = false;
-  }
+  attempt(
+    () => {
+      if (!ensureContext()) return;
+      if (ctx.state === "suspended") ctx.resume();
+      if (started) return;
+      started = true;
+      startPadDrone();
+      stepMelody();
+      melodyTimer = setInterval(stepMelody, BEAT_MS);
+    },
+    () => {
+      started = false;
+    }
+  );
 }
 
 export function stopMusic() {
-  try {
+  attempt(() => {
     if (melodyTimer) clearInterval(melodyTimer);
-  } catch {
-    /* nothing to clean up */
-  }
+  });
   melodyTimer = null;
 }
 
@@ -213,14 +207,12 @@ const EFFECTS = {
 
 /** Fires a named one-shot effect. Unknown names and failures are ignored. */
 export function playEffect(name) {
-  try {
+  attempt(() => {
     if (muted || !ensureContext()) return;
     if (ctx.state === "suspended") ctx.resume();
     const effect = EFFECTS[name];
     if (effect) effect();
-  } catch {
-    /* additive layer — a failed effect must never interrupt a turn */
-  }
+  });
 }
 
 export function isMuted() {
@@ -230,11 +222,9 @@ export function isMuted() {
 export function setMuted(value) {
   muted = Boolean(value);
   storeMute(muted);
-  try {
+  attempt(() => {
     if (master) master.gain.value = muted ? 0 : 0.9;
-  } catch {
-    /* gain node gone — nothing else to do */
-  }
+  });
   return muted;
 }
 

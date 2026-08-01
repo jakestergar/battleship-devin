@@ -15,9 +15,19 @@ UI, and harness are parallelized only after the engine's contract is fixed.**
 | **ui** | Rendering the board/heatmap/confidence meter/explain-panel, click handling | Game rules — always goes through engine functions, never reimplements them |
 | **harness** | Headless simulation at scale, anomaly logging, baseline stats | Rendering, browser dependency of any kind |
 | **reporting** | Battle Report generation from a finished game's history | Game rules, AI internals (reads history log only) |
+| **grid** | The `{row, col}` vocabulary: cell keys, bounds, placement enumeration, grid construction | Game rules, game state, DOM |
+| **dom** | Element construction and `.cell` dataset reading for the rendering code | Game state, game rules |
+| **safe** | `attempt()`, the guard every additive layer runs inside | Anything else |
 
 All modules communicate through the shared data shapes below — no module
 reaches into another's internals.
+
+`grid`, `dom` and `safe` are leaf utilities with no dependencies of their
+own: engine/ai/ui depend on them, never the other way round. They hold the
+logic that all three modules would otherwise each own a copy of (the cell
+key encoding, the bounds test, placement enumeration, the additive-layer
+`try/catch`). Adding to them is cheap; putting anything game-specific in
+them is not allowed.
 
 ## Core data shapes
 

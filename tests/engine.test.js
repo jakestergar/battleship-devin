@@ -9,6 +9,7 @@ import {
   FLEET,
   BOARD_SIZE,
 } from "../src/engine.js";
+import { key } from "../src/grid.js";
 
 function layoutOf(overrides = {}) {
   // A hand-built legal layout: every ship on its own row, starting at col 0.
@@ -18,10 +19,6 @@ function layoutOf(overrides = {}) {
     cells: Array.from({ length }, (_, i) => ({ row: index, col: i })),
     ...(overrides[id] ?? {}),
   }));
-}
-
-function key(row, col) {
-  return `${row},${col}`;
 }
 
 test("createGame places all ships without overlap or out-of-bounds cells, repeatedly", () => {
