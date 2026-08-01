@@ -67,6 +67,14 @@ body {
   color: var(--phosphor);
 }
 
+/* A failure the player needs to know about (a broken turn, a fatal start-up
+   problem) — same line, alarm colours. */
+.status-line.status-error {
+  border-left-color: var(--klaxon);
+  background: rgba(232, 67, 46, 0.08);
+  color: var(--klaxon-hot);
+}
+
 .theatre[hidden] {
   display: none;
 }

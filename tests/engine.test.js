@@ -138,6 +138,43 @@ test("validateFleetLayout rejects illegal layouts with a reason", () => {
   assert.throws(() => createGame(layoutOf().slice(1)), /Invalid fleet layout/);
 });
 
+test("fireAt rejects bad input instead of recording a bogus shot", () => {
+  const state = createGame();
+
+  assert.throws(() => fireAt(state, "enemy", { row: 0, col: 0 }), /target board/);
+  assert.throws(() => fireAt(state, undefined, { row: 0, col: 0 }), /target board/);
+
+  for (const cell of [
+    undefined,
+    null,
+    {},
+    { row: 0 },
+    { row: -1, col: 0 },
+    { row: 0, col: BOARD_SIZE },
+    { row: 1.5, col: 2 },
+    { row: "0", col: "0" },
+  ]) {
+    assert.throws(() => fireAt(state, "ai", cell), RangeError);
+  }
+
+  assert.equal(state.aiBoard.shotsReceived.size, 0);
+});
+
+test("fireAt refuses to keep firing once the game is over", () => {
+  let current = createGame();
+  for (const ship of current.aiBoard.ships) {
+    for (const cell of ship.cells) {
+      current = fireAt(current, "ai", cell).newState;
+    }
+  }
+  assert.equal(isGameOver(current), true);
+
+  const openCell = [...Array(BOARD_SIZE).keys()]
+    .flatMap((row) => [...Array(BOARD_SIZE).keys()].map((col) => ({ row, col })))
+    .find(({ row, col }) => !current.aiBoard.shotsReceived.has(key(row, col)));
+  assert.throws(() => fireAt(current, "ai", openCell), /already over/);
+});
+
 test("fireAt does not mutate the input state (pure function)", () => {
   const state = createGame();
   const snapshotShots = state.aiBoard.shotsReceived.size;
