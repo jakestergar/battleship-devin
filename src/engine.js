@@ -232,11 +232,22 @@ function boardFullySunk(board) {
 /**
  * Fires at `cell` on `targetBoard` ("player" or "ai") within `state`.
  * Pure: returns { newState, result } and never mutates `state`.
- * Firing at an already-fired-upon cell is a no-op.
+ * Firing at an already-fired-upon cell, or at anything that is not an
+ * in-bounds integer coordinate, is a no-op.
  */
 export function fireAt(state, targetBoard, cell) {
-  const cellKey = key(cell.row, cell.col);
   const board = targetBoard === "player" ? state.playerBoard : state.aiBoard;
+
+  if (
+    !cell ||
+    !Number.isInteger(cell.row) ||
+    !Number.isInteger(cell.col) ||
+    !inBounds(cell, board.size)
+  ) {
+    return { newState: state, result: "no-op" };
+  }
+
+  const cellKey = key(cell.row, cell.col);
 
   if (board.shotsReceived.has(cellKey)) {
     return { newState: state, result: "no-op" };

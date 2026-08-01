@@ -697,8 +697,11 @@ function setUpReticle() {
   const reticle = document.createElement("div");
   reticle.className = "bs-reticle";
   reticle.setAttribute("aria-hidden", "true");
-  reticle.innerHTML =
-    '<div class="bs-reticle-ring"></div><div class="bs-reticle-cross"></div>';
+  for (const cls of ["bs-reticle-ring", "bs-reticle-cross"]) {
+    const part = document.createElement("div");
+    part.className = cls;
+    reticle.appendChild(part);
+  }
   frame.appendChild(reticle);
   els.reticle = reticle;
 

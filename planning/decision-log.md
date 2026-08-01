@@ -463,3 +463,25 @@ sunk on their own, as the fallback.
   `06-exhibition-brief.md`, `07-coach-brief.md` written and ready to
   dispatch. Sessions 5-7 can run in parallel with each other and with the
   still-unstarted harness (Session 4).
+
+### 19. Security review: hardening only, since the game has no server or secrets
+
+- **Context:** asked to scan for hardcoded secrets, SQL injection, unvalidated
+  input, insecure dependencies, permissive CORS, exposed debug endpoints, and
+  missing auth checks.
+- **Finding:** none of those classes apply. The game is static HTML/CSS/ES
+  modules with zero runtime dependencies, no backend, no database, no network
+  calls, no auth, and no secrets in the tree or in git history. The only
+  third-party resource is the Google Fonts stylesheet; the only persisted data
+  is a boolean mute flag in `localStorage`.
+- **Decision:** apply defence-in-depth instead of chasing non-issues — a
+  restrictive CSP (`default-src 'none'`, scripts self-only, fonts limited to
+  Google's two origins), `no-referrer`, bounds/type validation on `fireAt`,
+  an own-property + integer guard in `shipSvg` (the one place where a value
+  reaches `innerHTML` inside a class name), and removal of the one gratuitous
+  `innerHTML` in the reticle.
+- **Honest assessment:** good but small. The residual risk is the unpinnable
+  Google Fonts stylesheet — SRI is impossible on it because Google serves
+  UA-dependent CSS; self-hosting the woff2 files is the real fix and is
+  deliberately deferred as a visual-layer change, with CSP limiting the blast
+  radius to styling in the meantime.
