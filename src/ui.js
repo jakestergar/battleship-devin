@@ -8,9 +8,24 @@ import {
   createGame,
   fireAt,
   isGameOver,
+  lastShotBy,
   randomFleetLayout,
+  shotsBy,
   validateFleetLayout,
 } from "./engine.js";
+import {
+  buildGrid,
+  cellKey,
+  findShipAt,
+  forEachCell,
+  key,
+  occupiedKeys,
+  pickRandom,
+  placementFits,
+  sameCell,
+} from "./grid.js";
+import { cellCoords, el, eventCell, repeat } from "./dom.js";
+import { attempt } from "./safe.js";
 import { chooseMove as realChooseMove } from "./ai.js";
 import { shipSvg } from "./ships.js";
 import {
@@ -37,10 +52,6 @@ const RESULT_PAUSE_MS = 200;
 const IMPACT_MS = 620;
 const MISSILE_MS = 650;
 
-function key(row, col) {
-  return `${row},${col}`;
-}
-
 /**
  * Stand-in for the AI module's `chooseMove` until `src/ai.js` lands: picks a
  * uniformly random unattacked cell on the player's board. Returns the real
@@ -50,17 +61,13 @@ function key(row, col) {
 export function mockChooseMove(state) {
   const board = state.playerBoard;
   const open = [];
-  for (let row = 0; row < board.size; row++) {
-    for (let col = 0; col < board.size; col++) {
-      if (!board.shotsReceived.has(key(row, col))) open.push({ row, col });
-    }
-  }
-  const cell = open[Math.floor(Math.random() * open.length)];
+  forEachCell(board.size, (row, col) => {
+    if (!board.shotsReceived.has(key(row, col))) open.push({ row, col });
+  });
+  const cell = pickRandom(open);
   const probabilityMap = open.length
-    ? Array.from({ length: board.size }, (_, row) =>
-        Array.from({ length: board.size }, (_, col) =>
-          board.shotsReceived.has(key(row, col)) ? 0 : Math.random()
-        )
+    ? buildGrid(board.size, (row, col) =>
+        board.shotsReceived.has(key(row, col)) ? 0 : Math.random()
       )
     : null;
 
@@ -102,19 +109,7 @@ export function normalizeProbabilityMap(map, size = BOARD_SIZE) {
  */
 export function isPlacementLegal(layout, cells, size = BOARD_SIZE, movingId = null) {
   if (!Array.isArray(cells) || cells.length === 0) return false;
-  if (
-    !cells.every(
-      (c) => c.row >= 0 && c.row < size && c.col >= 0 && c.col < size
-    )
-  ) {
-    return false;
-  }
-  const taken = new Set();
-  for (const ship of layout) {
-    if (ship.id === movingId) continue;
-    for (const cell of ship.cells) taken.add(key(cell.row, cell.col));
-  }
-  return cells.every((c) => !taken.has(key(c.row, c.col)));
+  return placementFits(cells, size, occupiedKeys(layout, { exceptId: movingId }));
 }
 
 const els = {};
@@ -162,50 +157,37 @@ function cacheElements() {
   els.muteLabel = document.getElementById("mute-label");
 }
 
-function buildGrid(container, { clickable, label }) {
+function buildBoardGrid(container, { clickable, label }) {
   container.textContent = "";
-  for (let row = 0; row < BOARD_SIZE; row++) {
-    for (let col = 0; col < BOARD_SIZE; col++) {
-      const cell = document.createElement("button");
-      cell.type = "button";
-      cell.className = "cell";
-      cell.dataset.row = String(row);
-      cell.dataset.col = String(col);
-      cell.setAttribute("role", "gridcell");
-      cell.setAttribute("aria-label", `${label} row ${row + 1} column ${col + 1}`);
-      if (!clickable) cell.tabIndex = -1;
-      container.appendChild(cell);
-    }
-  }
+  forEachCell(BOARD_SIZE, (row, col) => {
+    const cell = el("button", "cell");
+    cell.type = "button";
+    cell.dataset.row = String(row);
+    cell.dataset.col = String(col);
+    cell.setAttribute("role", "gridcell");
+    cell.setAttribute("aria-label", `${label} row ${row + 1} column ${col + 1}`);
+    if (!clickable) cell.tabIndex = -1;
+    container.appendChild(cell);
+  });
 }
 
 function buildHeatmapGrid() {
   els.heatmap.textContent = "";
-  for (let i = 0; i < BOARD_SIZE * BOARD_SIZE; i++) {
-    const tile = document.createElement("div");
-    tile.className = "heat-tile";
-    els.heatmap.appendChild(tile);
-  }
+  repeat(els.heatmap, BOARD_SIZE * BOARD_SIZE, () => el("div", "heat-tile"));
 }
 
 function frameBoard(element) {
-  const frame = document.createElement("div");
-  frame.className = "board-frame";
-  const topLabels = document.createElement("div");
-  topLabels.className = "board-axis board-axis-top";
-  for (let col = 0; col < BOARD_SIZE; col++) {
-    const label = document.createElement("span");
-    label.textContent = String(col + 1);
-    topLabels.appendChild(label);
-  }
-
-  const sideLabels = document.createElement("div");
-  sideLabels.className = "board-axis board-axis-side";
-  for (let row = 0; row < BOARD_SIZE; row++) {
-    const label = document.createElement("span");
-    label.textContent = String.fromCharCode(65 + row);
-    sideLabels.appendChild(label);
-  }
+  const frame = el("div", "board-frame");
+  const topLabels = repeat(
+    el("div", "board-axis board-axis-top"),
+    BOARD_SIZE,
+    (col) => el("span", "", String(col + 1))
+  );
+  const sideLabels = repeat(
+    el("div", "board-axis board-axis-side"),
+    BOARD_SIZE,
+    (row) => el("span", "", String.fromCharCode(65 + row))
+  );
 
   const parent = element.parentNode;
   parent.replaceChild(frame, element);
@@ -217,9 +199,7 @@ function cellElAt(container, row, col) {
 }
 
 function shipCellState(board, cell) {
-  const ship = board.ships.find((s) =>
-    s.cells.some((c) => c.row === cell.row && c.col === cell.col)
-  );
+  const ship = findShipAt(board.ships, cell);
   if (!ship) return { hasShip: false, sunk: false };
   return { hasShip: true, sunk: ship.sunk };
 }
@@ -273,7 +253,8 @@ function shipBox(boardEl, ship) {
  * already convey ship/hit/miss/sunk on their own — as the fallback.
  */
 function renderFleetArt(overlayEl, boardEl, ships) {
-  try {
+  // Decorative layer — the cell states already carry the game state.
+  attempt(() => {
     if (!overlayEl) return;
     overlayEl.textContent = "";
     if (!ships) return;
@@ -283,8 +264,7 @@ function renderFleetArt(overlayEl, boardEl, ships) {
       const markup = shipSvg(ship.id, ship.cells.length);
       if (!box || !markup) continue;
 
-      const wrap = document.createElement("div");
-      wrap.className = "ship-figure";
+      const wrap = el("div", "ship-figure");
       if (ship.sunk) wrap.classList.add("is-sunk");
       else if (ship.hits?.size > 0) wrap.classList.add("is-damaged");
       wrap.style.left = `${box.left}px`;
@@ -299,9 +279,7 @@ function renderFleetArt(overlayEl, boardEl, ships) {
       wrap.innerHTML = markup;
       overlayEl.appendChild(wrap);
     }
-  } catch {
-    /* decorative layer — the cell states already carry the game state */
-  }
+  });
 }
 
 /**
@@ -312,41 +290,32 @@ function renderFleetArt(overlayEl, boardEl, ships) {
 function addFleetArtLayer(boardEl) {
   let stack = boardEl.parentElement;
   if (!stack || !stack.classList.contains("board-stack")) {
-    stack = document.createElement("div");
-    stack.className = "board-stack";
+    stack = el("div", "board-stack");
     boardEl.parentNode.replaceChild(stack, boardEl);
     stack.appendChild(boardEl);
   }
-  const overlay = document.createElement("div");
-  overlay.className = "fleet-art";
+  const overlay = el("div", "fleet-art");
   overlay.setAttribute("aria-hidden", "true");
   stack.appendChild(overlay);
   return overlay;
 }
 
 function latestAiEntry() {
-  for (let i = state.history.length - 1; i >= 0; i--) {
-    if (state.history[i].actor === "ai") return state.history[i];
-  }
-  return null;
+  return lastShotBy(state, "ai");
 }
 
 function renderBoard(container, board, { revealShips }) {
   const latest = revealShips ? latestAiEntry() : null;
   for (const cellEl of container.children) {
-    const row = Number(cellEl.dataset.row);
-    const col = Number(cellEl.dataset.col);
-    const fired = board.shotsReceived.has(key(row, col));
-    const { hasShip, sunk } = shipCellState(board, { row, col });
+    const cell = cellCoords(cellEl);
+    const fired = board.shotsReceived.has(cellKey(cell));
+    const { hasShip, sunk } = shipCellState(board, cell);
 
     cellEl.classList.toggle("is-ship", revealShips && hasShip && !fired);
     cellEl.classList.toggle("is-miss", fired && !hasShip);
     cellEl.classList.toggle("is-hit", fired && hasShip && !sunk);
     cellEl.classList.toggle("is-sunk", fired && hasShip && sunk);
-    cellEl.classList.toggle(
-      "is-latest",
-      Boolean(latest && latest.cell.row === row && latest.cell.col === col)
-    );
+    cellEl.classList.toggle("is-latest", Boolean(latest && sameCell(latest.cell, cell)));
   }
   // Enemy vessels appear only once sunk, which is information the player has
   // already been given — an unsunk enemy ship is never drawn.
@@ -363,36 +332,29 @@ function renderBoard(container, board, { revealShips }) {
  * ship is sunk, since that's all the player is told.
  */
 function rosterRow(ship, { own }) {
-  const item = document.createElement("li");
-  item.className = `roster-row${ship.sunk ? " roster-sunk" : ""}`;
+  const item = el("li", `roster-row${ship.sunk ? " roster-sunk" : ""}`);
+  const hull = hullStrip(ship.cells.length, (index) =>
+    own ? ship.hits.has(cellKey(ship.cells[index])) : ship.sunk
+  );
 
-  const name = document.createElement("span");
-  name.className = "roster-name";
-  name.textContent = ship.id;
-  item.appendChild(name);
+  let status;
+  if (ship.sunk) status = "sunk";
+  else if (own) status = `${ship.length - ship.hits.size}/${ship.length}`;
+  else status = "afloat";
 
-  const hull = document.createElement("span");
-  hull.className = "hull";
-  for (const cell of ship.cells) {
-    const segment = document.createElement("span");
-    const struck = own ? ship.hits.has(key(cell.row, cell.col)) : ship.sunk;
-    segment.className = `hull-segment${struck ? " hull-hit" : ""}`;
-    hull.appendChild(segment);
-  }
-  item.appendChild(hull);
-
-  const status = document.createElement("span");
-  status.className = "roster-status";
-  if (ship.sunk) {
-    status.textContent = "sunk";
-  } else if (own) {
-    status.textContent = `${ship.length - ship.hits.size}/${ship.length}`;
-  } else {
-    status.textContent = "afloat";
-  }
-  item.appendChild(status);
-
+  item.append(
+    el("span", "roster-name", ship.id),
+    hull,
+    el("span", "roster-status", status)
+  );
   return item;
+}
+
+/** A ship's hull as one segment per cell, `struck` ones marked as damage. */
+function hullStrip(length, struck = () => false) {
+  return repeat(el("span", "hull"), length, (index) =>
+    el("span", `hull-segment${struck(index) ? " hull-hit" : ""}`)
+  );
 }
 
 function renderRosters() {
@@ -406,10 +368,9 @@ function renderRosters() {
       const ship = board.ships.find((s) => s.id === id);
       container.appendChild(rosterRow(ship, { own }));
     }
-    const summary = document.createElement("li");
-    summary.className = "roster-summary";
-    summary.textContent = `${afloat(board)} of ${FLEET.length} ships afloat`;
-    container.appendChild(summary);
+    container.appendChild(
+      el("li", "roster-summary", `${afloat(board)} of ${FLEET.length} ships afloat`)
+    );
   }
 }
 
@@ -439,13 +400,8 @@ function renderExplain() {
 }
 
 function renderShotCount() {
-  let player = 0;
-  let ai = 0;
-  for (const entry of state.history) {
-    if (entry.actor === "ai") ai++;
-    else player++;
-  }
-  els.shotCount.textContent = `You ${player} · AI ${ai}`;
+  const ai = shotsBy(state, "ai").length;
+  els.shotCount.textContent = `You ${state.history.length - ai} · AI ${ai}`;
 }
 
 function describeResult(entry) {
@@ -485,7 +441,7 @@ function renderEndScreen() {
   }
   const won = state.status === "player_won";
   els.endTitle.textContent = won ? "Victory" : "Defeat";
-  const shots = state.history.filter((e) => e.actor === (won ? "player" : "ai")).length;
+  const shots = shotsBy(state, won ? "player" : "ai").length;
   els.endSummary.textContent = won
     ? `You sank the enemy fleet in ${shots} shots.`
     : `The AI sank your fleet in ${shots} shots.`;
@@ -513,60 +469,40 @@ function render() {
 function renderLaunchPoint() {
   const launch = playerLaunchCell();
   for (const cellEl of els.playerBoard.children) {
-    cellEl.classList.toggle(
-      "launch-point",
-      Boolean(
-        launch &&
-          Number(cellEl.dataset.row) === launch.row &&
-          Number(cellEl.dataset.col) === launch.col
-      )
-    );
+    cellEl.classList.toggle("launch-point", sameCell(launch, cellCoords(cellEl)));
   }
 }
 
 /** Integration hook: a later pass calls this with the generated report text. */
 export function renderBattleReport(text) {
-  try {
+  attempt(() => {
     if (els.battleReport) els.battleReport.textContent = text;
-  } catch {
-    /* additive layer — never break the game */
-  }
+  });
 }
 
 /** Integration hook: a later pass calls this with the efficiency stat text. */
 export function renderEfficiencyStat(text) {
-  try {
+  attempt(() => {
     if (els.efficiencyStat) els.efficiencyStat.textContent = text;
-  } catch {
-    /* additive layer — never break the game */
-  }
+  });
 }
 
 function showHeatmap(map) {
   // Additive layer: any bad data or DOM problem silently skips the overlay.
-  try {
+  attempt(() => {
     const intensities = normalizeProbabilityMap(map, BOARD_SIZE);
     if (!intensities) return;
     const tiles = els.heatmap.children;
-    for (let row = 0; row < BOARD_SIZE; row++) {
-      for (let col = 0; col < BOARD_SIZE; col++) {
-        const tile = tiles[row * BOARD_SIZE + col];
-        if (!tile) continue;
-        tile.style.opacity = String(0.08 + intensities[row][col] * 0.72);
-      }
-    }
+    forEachCell(BOARD_SIZE, (row, col) => {
+      const tile = tiles[row * BOARD_SIZE + col];
+      if (tile) tile.style.opacity = String(0.08 + intensities[row][col] * 0.72);
+    });
     els.heatmap.classList.add("heatmap-visible");
-  } catch {
-    clearHeatmap();
-  }
+  }, clearHeatmap);
 }
 
 function clearHeatmap() {
-  try {
-    els.heatmap.classList.remove("heatmap-visible");
-  } catch {
-    /* nothing to clean up */
-  }
+  attempt(() => els.heatmap.classList.remove("heatmap-visible"));
 }
 
 function annotateAiMove(nextState, move, probabilityMap) {
@@ -574,15 +510,14 @@ function annotateAiMove(nextState, move, probabilityMap) {
   // of the AI module); the UI attaches the decision data to the turn the
   // engine just recorded so the heatmap/confidence/explain layers can read it
   // back out of history as the data contract specifies.
-  try {
+  // Metadata is optional — a failure here must not stop the turn.
+  attempt(() => {
     const entry = nextState.history[nextState.history.length - 1];
     if (!entry || entry.actor !== "ai") return;
     entry.probabilityMapSnapshot = probabilityMap ?? null;
     entry.confidence = typeof move.confidence === "number" ? move.confidence : null;
     entry.explanation = typeof move.explanation === "string" ? move.explanation : null;
-  } catch {
-    /* metadata is optional — a failure here must not stop the turn */
-  }
+  });
 }
 
 function sleep(ms) {
@@ -629,7 +564,7 @@ function flyMissile(sourceEl, targetEl) {
       resolve();
     };
 
-    try {
+    attempt(() => {
       if (!els.missileLayer || !sourceEl || !targetEl) {
         arrive();
         return;
@@ -642,9 +577,7 @@ function flyMissile(sourceEl, targetEl) {
       });
       // Backstop in case the animation never reports finishing.
       setTimeout(arrive, MISSILE_MS + 400);
-    } catch {
-      arrive();
-    }
+    }, arrive);
   });
 }
 
@@ -654,7 +587,7 @@ function flyMissile(sourceEl, targetEl) {
  * decorative and fully guarded.
  */
 function playImpact(container, cell, result, { own = false } = {}) {
-  try {
+  attempt(() => {
     const cellEl = cellElAt(container, cell.row, cell.col);
     if (!cellEl) return;
 
@@ -670,19 +603,15 @@ function playImpact(container, cell, result, { own = false } = {}) {
 
     if (own && result !== "miss") klaxonFlash();
     playEffect(result === "no-op" ? "invalid" : result);
-  } catch {
-    /* decorative only */
-  }
+  });
 }
 
 /** Scan sweep while the opponent is thinking. */
 function setScanning(on) {
-  try {
+  attempt(() => {
     const panel = els.playerBoard?.closest(".board-panel");
     if (panel) panel.classList.toggle("bs-scanning", on);
-  } catch {
-    /* decorative only */
-  }
+  });
 }
 
 /**
@@ -694,8 +623,7 @@ function setUpReticle() {
   const frame = els.aiBoard.closest(".board-frame") ?? els.aiBoard.parentElement;
   if (!frame) return;
 
-  const reticle = document.createElement("div");
-  reticle.className = "bs-reticle";
+  const reticle = el("div", "bs-reticle");
   reticle.setAttribute("aria-hidden", "true");
   reticle.innerHTML =
     '<div class="bs-reticle-ring"></div><div class="bs-reticle-cross"></div>';
@@ -703,7 +631,7 @@ function setUpReticle() {
   els.reticle = reticle;
 
   els.aiBoard.addEventListener("mousemove", (event) => {
-    const cellEl = event.target.closest(".cell");
+    const cellEl = eventCell(event);
     if (!cellEl || busy || isGameOver(state)) {
       hideReticle(reticle);
       return;
@@ -739,7 +667,7 @@ async function takeAiTurn() {
 
 async function onPlayerShot(cell) {
   if (busy || isGameOver(state)) return;
-  if (state.aiBoard.shotsReceived.has(key(cell.row, cell.col))) {
+  if (state.aiBoard.shotsReceived.has(cellKey(cell))) {
     playEffect("invalid");
     return;
   }
@@ -773,16 +701,10 @@ async function onPlayerShot(cell) {
 }
 
 function onPlayerBoardClick(event) {
-  const cellEl = event.target.closest(".cell");
+  const cellEl = eventCell(event);
   if (!cellEl) return;
   const entry = latestAiEntry();
-  if (
-    !entry ||
-    entry.cell.row !== Number(cellEl.dataset.row) ||
-    entry.cell.col !== Number(cellEl.dataset.col)
-  ) {
-    return;
-  }
+  if (!entry || !sameCell(entry.cell, cellCoords(cellEl))) return;
   explainOpen = !explainOpen;
   renderExplain();
 }
@@ -808,29 +730,21 @@ function renderPlacementRoster() {
   els.placementRoster.textContent = "";
   for (const { id, length } of FLEET) {
     const ship = placedShip(id);
-    const item = document.createElement("li");
-    const button = document.createElement("button");
+    const button = el(
+      "button",
+      `roster-pick${id === selectedShipId ? " roster-pick-active" : ""}${
+        ship ? " roster-pick-placed" : ""
+      }`
+    );
     button.type = "button";
-    button.className = `roster-pick${id === selectedShipId ? " roster-pick-active" : ""}${
-      ship ? " roster-pick-placed" : ""
-    }`;
     button.dataset.shipId = id;
+    button.append(
+      el("span", "roster-name", id),
+      hullStrip(length),
+      el("span", "roster-status", ship ? "deployed" : `${length}`)
+    );
 
-    const name = document.createElement("span");
-    name.className = "roster-name";
-    name.textContent = id;
-    const hull = document.createElement("span");
-    hull.className = "hull";
-    for (let i = 0; i < length; i++) {
-      const segment = document.createElement("span");
-      segment.className = "hull-segment";
-      hull.appendChild(segment);
-    }
-    const status = document.createElement("span");
-    status.className = "roster-status";
-    status.textContent = ship ? "deployed" : `${length}`;
-
-    button.append(name, hull, status);
+    const item = el("li");
     item.appendChild(button);
     els.placementRoster.appendChild(item);
   }
@@ -839,11 +753,10 @@ function renderPlacementRoster() {
 function renderPlacementBoard() {
   const occupied = new Map();
   for (const ship of layout) {
-    for (const cell of ship.cells) occupied.set(key(cell.row, cell.col), ship.id);
+    for (const cell of ship.cells) occupied.set(cellKey(cell), ship.id);
   }
   for (const cellEl of els.placementBoard.children) {
-    const cellKey = key(Number(cellEl.dataset.row), Number(cellEl.dataset.col));
-    const shipId = occupied.get(cellKey) ?? null;
+    const shipId = occupied.get(cellKey(cellCoords(cellEl))) ?? null;
     cellEl.classList.toggle("is-ship", Boolean(shipId));
     cellEl.classList.remove("preview-ok", "preview-bad");
     if (shipId) {
@@ -906,14 +819,15 @@ function pickUpShip(id) {
 }
 
 function onPlacementBoardClick(event) {
-  const cellEl = event.target.closest(".cell");
+  const cellEl = eventCell(event);
   if (!cellEl) return;
   startMusic();
   if (cellEl.dataset.shipId) {
     pickUpShip(cellEl.dataset.shipId);
     return;
   }
-  placeSelectedShip(Number(cellEl.dataset.row), Number(cellEl.dataset.col));
+  const { row, col } = cellCoords(cellEl);
+  placeSelectedShip(row, col);
 }
 
 function rotateSelection() {
@@ -1001,9 +915,9 @@ function onKeyDown(event) {
 
 function init() {
   cacheElements();
-  buildGrid(els.aiBoard, { clickable: true, label: "Enemy cell" });
-  buildGrid(els.playerBoard, { clickable: false, label: "Your cell" });
-  buildGrid(els.placementBoard, { clickable: true, label: "Deployment cell" });
+  buildBoardGrid(els.aiBoard, { clickable: true, label: "Enemy cell" });
+  buildBoardGrid(els.playerBoard, { clickable: false, label: "Your cell" });
+  buildBoardGrid(els.placementBoard, { clickable: true, label: "Deployment cell" });
   buildHeatmapGrid();
   els.aiFleetArt = addFleetArtLayer(els.aiBoard);
   els.playerFleetArt = addFleetArtLayer(els.playerBoard);
@@ -1016,18 +930,18 @@ function init() {
   renderMuteButton();
 
   els.aiBoard.addEventListener("click", (event) => {
-    const cellEl = event.target.closest(".cell");
-    if (!cellEl) return;
-    onPlayerShot({ row: Number(cellEl.dataset.row), col: Number(cellEl.dataset.col) });
+    const cellEl = eventCell(event);
+    if (cellEl) onPlayerShot(cellCoords(cellEl));
   });
   els.playerBoard.addEventListener("click", onPlayerBoardClick);
   els.newGame.addEventListener("click", enterPlacementPhase);
 
   els.placementBoard.addEventListener("click", onPlacementBoardClick);
   els.placementBoard.addEventListener("mouseover", (event) => {
-    const cellEl = event.target.closest(".cell");
+    const cellEl = eventCell(event);
     if (!cellEl) return;
-    previewPlacement(Number(cellEl.dataset.row), Number(cellEl.dataset.col));
+    const { row, col } = cellCoords(cellEl);
+    previewPlacement(row, col);
   });
   els.placementBoard.addEventListener("mouseleave", renderPlacementBoard);
   els.placementRoster.addEventListener("click", (event) => {

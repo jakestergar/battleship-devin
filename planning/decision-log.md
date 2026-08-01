@@ -463,3 +463,33 @@ sunk on their own, as the fallback.
   `06-exhibition-brief.md`, `07-coach-brief.md` written and ready to
   dispatch. Sessions 5-7 can run in parallel with each other and with the
   still-unstarted harness (Session 4).
+
+### 19. Extracted the duplicated cell/grid/guard patterns into leaf utilities
+- **Context:** four patterns had been independently reimplemented as the
+  modules grew: the cell key `` `${row},${col}` `` (engine, ai, ui and two
+  test files), the in-bounds test (engine's `inBounds` vs. an inline copy in
+  `ui.isPlacementLegal`), placement enumeration (engine's
+  `enumerateLegalPlacements` vs. ai's `forEachValidPlacement`, both looping
+  orientations x rows x cols and building the same cell runs), and the
+  additive-layer `try {} catch {}` (nine sites in `ui.js`, six more in
+  `audio.js`). On top of that `ui.js` had ~25 hand-rolled
+  `document.createElement` + `className` + `textContent` triples and seven
+  copies of `Number(cellEl.dataset.row)`.
+- **Decision:** three dependency-free leaf modules — `src/grid.js` (cell
+  keys, bounds, `cellsForPlacement`, `forEachCell`/`buildGrid`,
+  `forEachPlacement`, `occupiedKeys`/`placementFits`, `findShipAt`,
+  `pickRandom`), `src/dom.js` (`el`, `repeat`, `cellCoords`, `eventCell`)
+  and `src/safe.js` (`attempt`). Engine and ui also stopped hand-filtering
+  `state.history` by actor: that is now `engine.shotsBy` / `lastShotBy`.
+  Every public contract is unchanged — `engine.cellsForPlacement` is
+  re-exported from its new home so no caller moved.
+- **Why not one `utils.js`:** a single grab-bag would let DOM code leak into
+  the engine's dependency graph. The split keeps `engine.js` and `ai.js`
+  importing only pure geometry, which is what makes them runnable headless.
+- **Assessment: good, low-risk.** Behaviour-preserving by construction and
+  covered by the existing 28 tests plus 10 new ones for the extracted
+  helpers. The one real risk is a merge conflict: sessions 5-7 (fairness,
+  exhibition, coach) are specced to touch `ui.js`, and this touches a lot of
+  it. Their permitted footprint there is still one import and one call site,
+  so conflicts stay one-line — and those new modules should now build on
+  `grid.js` instead of growing a fourth copy of `key()`.

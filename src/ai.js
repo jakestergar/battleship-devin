@@ -10,19 +10,22 @@
 // See planning/technical-design.md for the shared data contract and
 // planning/session-briefs/02-ai-brief.md for the specification.
 
-import { FLEET } from "./engine.js";
+import { FLEET, shotsBy } from "./engine.js";
+import {
+  buildGrid,
+  cellKey,
+  forEachCell,
+  forEachPlacement,
+  key,
+  parseKey,
+  pickRandom,
+} from "./grid.js";
 
 // Multiplier applied per unresolved-hit cell a candidate placement covers.
 // Large enough that any placement touching a known hit dominates every
 // placement that doesn't, which is what makes the AI finish off a ship it
 // has found instead of wandering — without needing a separate "target mode".
 export const HIT_BOOST_FACTOR = 100;
-
-const ORIENTATIONS = ["horizontal", "vertical"];
-
-function key(row, col) {
-  return `${row},${col}`;
-}
 
 function formatCell(cell) {
   return `(${cell.row},${cell.col})`;
@@ -34,7 +37,7 @@ function formatCell(cell) {
  */
 function gatherFairKnowledge(state) {
   const board = state.playerBoard;
-  const aiShots = state.history.filter((h) => h.actor === "ai");
+  const aiShots = shotsBy(state, "ai");
 
   const sunkShipIds = new Set(
     aiShots.filter((h) => h.result === "sunk" && h.shipId).map((h) => h.shipId)
@@ -46,18 +49,18 @@ function gatherFairKnowledge(state) {
     if (!sunkShipIds.has(ship.id)) continue;
     // Fair: a sunk ship's position is public information.
     sunkLengths.push(ship.cells.length);
-    for (const c of ship.cells) sunkCells.add(key(c.row, c.col));
+    for (const c of ship.cells) sunkCells.add(cellKey(c));
   }
 
   const missCells = new Set(
-    aiShots.filter((h) => h.result === "miss").map((h) => key(h.cell.row, h.cell.col))
+    aiShots.filter((h) => h.result === "miss").map((h) => cellKey(h.cell))
   );
 
   const unresolvedHits = [];
   const seen = new Set();
   for (const h of aiShots) {
     if (h.result !== "hit" && h.result !== "sunk") continue;
-    const k = key(h.cell.row, h.cell.col);
+    const k = cellKey(h.cell);
     if (sunkCells.has(k) || seen.has(k)) continue;
     seen.add(k);
     unresolvedHits.push({ row: h.cell.row, col: h.cell.col });
@@ -81,10 +84,6 @@ function gatherFairKnowledge(state) {
   };
 }
 
-function emptyGrid(size) {
-  return Array.from({ length: size }, () => new Array(size).fill(0));
-}
-
 /**
  * Enumerates every placement of every remaining ship length that is
  * consistent with the fair knowledge above, and reports each one to
@@ -94,31 +93,15 @@ function forEachValidPlacement(knowledge, visit) {
   const { size, blocked, unresolvedHitKeys, remainingLengths } = knowledge;
 
   for (const length of remainingLengths) {
-    for (const orientation of ORIENTATIONS) {
-      const maxRow = orientation === "vertical" ? size - length : size - 1;
-      const maxCol = orientation === "horizontal" ? size - length : size - 1;
-      for (let row = 0; row <= maxRow; row++) {
-        for (let col = 0; col <= maxCol; col++) {
-          const cells = [];
-          let valid = true;
-          let hitsCovered = 0;
-          for (let i = 0; i < length; i++) {
-            const cell =
-              orientation === "horizontal"
-                ? { row, col: col + i }
-                : { row: row + i, col };
-            const k = key(cell.row, cell.col);
-            if (blocked.has(k)) {
-              valid = false;
-              break;
-            }
-            if (unresolvedHitKeys.has(k)) hitsCovered++;
-            cells.push(cell);
-          }
-          if (valid) visit(cells, hitsCovered);
-        }
+    forEachPlacement(size, length, (cells) => {
+      let hitsCovered = 0;
+      for (const cell of cells) {
+        const k = cellKey(cell);
+        if (blocked.has(k)) return;
+        if (unresolvedHitKeys.has(k)) hitsCovered++;
       }
-    }
+      visit(cells, hitsCovered);
+    });
   }
 }
 
@@ -133,7 +116,7 @@ function forEachValidPlacement(knowledge, visit) {
  */
 export function computeProbabilityMap(state) {
   const knowledge = gatherFairKnowledge(state);
-  const grid = emptyGrid(knowledge.size);
+  const grid = buildGrid(knowledge.size);
 
   forEachValidPlacement(knowledge, (cells, hitsCovered) => {
     const weight = HIT_BOOST_FACTOR ** hitsCovered;
@@ -142,7 +125,7 @@ export function computeProbabilityMap(state) {
 
   // Never spend a "confident" shot on a cell that can't legally be fired at.
   for (const k of knowledge.shotsReceived) {
-    const [row, col] = k.split(",").map(Number);
+    const { row, col } = parseKey(k);
     if (grid[row] !== undefined) grid[row][col] = 0;
   }
 
@@ -156,8 +139,8 @@ export function computeProbabilityMap(state) {
  */
 function computePlacementStats(knowledge) {
   const { size } = knowledge;
-  const placementsThroughCell = emptyGrid(size);
-  const hitLinkedThroughCell = emptyGrid(size);
+  const placementsThroughCell = buildGrid(size);
+  const hitLinkedThroughCell = buildGrid(size);
   let totalPlacements = 0;
 
   forEachValidPlacement(knowledge, (cells, hitsCovered) => {
@@ -210,16 +193,10 @@ function buildExplanation(cell, knowledge, stats) {
 
 function unattackedCells(knowledge) {
   const cells = [];
-  for (let row = 0; row < knowledge.size; row++) {
-    for (let col = 0; col < knowledge.size; col++) {
-      if (!knowledge.shotsReceived.has(key(row, col))) cells.push({ row, col });
-    }
-  }
+  forEachCell(knowledge.size, (row, col) => {
+    if (!knowledge.shotsReceived.has(key(row, col))) cells.push({ row, col });
+  });
   return cells;
-}
-
-function pickRandom(cells) {
-  return cells[Math.floor(Math.random() * cells.length)];
 }
 
 /**
@@ -242,19 +219,17 @@ export function chooseMove(state) {
   let peak = 0;
   let total = 0;
   let candidates = [];
-  for (let row = 0; row < knowledge.size; row++) {
-    for (let col = 0; col < knowledge.size; col++) {
-      const weight = grid[row][col];
-      total += weight;
-      if (weight <= 0) continue;
-      if (weight > peak) {
-        peak = weight;
-        candidates = [{ row, col }];
-      } else if (weight === peak) {
-        candidates.push({ row, col });
-      }
+  forEachCell(knowledge.size, (row, col) => {
+    const weight = grid[row][col];
+    total += weight;
+    if (weight <= 0) return;
+    if (weight > peak) {
+      peak = weight;
+      candidates = [{ row, col }];
+    } else if (weight === peak) {
+      candidates.push({ row, col });
     }
-  }
+  });
 
   // Degenerate case (every remaining ship sunk, or a state no placement can
   // explain): still return a legal shot rather than nothing.

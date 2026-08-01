@@ -2,10 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { BOARD_SIZE, FLEET, createGame, fireAt } from "../src/engine.js";
 import { computeProbabilityMap, chooseMove } from "../src/ai.js";
-
-function key(row, col) {
-  return `${row},${col}`;
-}
+import { key } from "../src/grid.js";
 
 // Fixed fleet layout in the bottom-left, so the top of the board is free
 // for hand-constructed shot patterns.

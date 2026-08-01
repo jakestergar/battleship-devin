@@ -2,6 +2,17 @@
 // No DOM, no AI decision-making — see planning/technical-design.md for the
 // full data contract this module implements.
 
+import {
+  cellKey,
+  cellsForPlacement,
+  findShipAt,
+  forEachPlacement,
+  inBounds,
+  pickRandom,
+} from "./grid.js";
+
+export { cellsForPlacement };
+
 export const BOARD_SIZE = 10;
 
 export const FLEET = [
@@ -12,26 +23,6 @@ export const FLEET = [
   { id: "destroyer", length: 2 },
 ];
 
-function key(row, col) {
-  return `${row},${col}`;
-}
-
-export function cellsForPlacement(row, col, length, orientation) {
-  const cells = [];
-  for (let i = 0; i < length; i++) {
-    cells.push(
-      orientation === "horizontal"
-        ? { row, col: col + i }
-        : { row: row + i, col }
-    );
-  }
-  return cells;
-}
-
-function inBounds(cell, size) {
-  return cell.row >= 0 && cell.row < size && cell.col >= 0 && cell.col < size;
-}
-
 /**
  * Enumerate every legal placement (both orientations, all positions) for a
  * ship of the given length on a board of the given size, given a set of
@@ -39,21 +30,11 @@ function inBounds(cell, size) {
  */
 export function enumerateLegalPlacements(length, size, occupied) {
   const placements = [];
-  for (const orientation of ["horizontal", "vertical"]) {
-    for (let row = 0; row < size; row++) {
-      for (let col = 0; col < size; col++) {
-        const cells = cellsForPlacement(row, col, length, orientation);
-        if (!cells.every((c) => inBounds(c, size))) continue;
-        if (cells.some((c) => occupied.has(key(c.row, c.col)))) continue;
-        placements.push(cells);
-      }
-    }
-  }
+  forEachPlacement(size, length, (cells) => {
+    if (cells.some((c) => occupied.has(cellKey(c)))) return;
+    placements.push(cells);
+  });
   return placements;
-}
-
-function randomInt(n) {
-  return Math.floor(Math.random() * n);
 }
 
 /**
@@ -78,8 +59,8 @@ function placeFleet(size) {
         failed = true;
         break;
       }
-      const cells = placements[randomInt(placements.length)];
-      cells.forEach((c) => occupied.add(key(c.row, c.col)));
+      const cells = pickRandom(placements);
+      cells.forEach((c) => occupied.add(cellKey(c)));
       ships.push({ id, length, cells, hits: new Set(), sunk: false });
     }
 
@@ -145,17 +126,16 @@ export function validateFleetLayout(layout, size = BOARD_SIZE) {
       a.row + a.col <= b.row + b.col ? a : b
     );
     const expected = cellsForPlacement(start.row, start.col, length, orientation);
-    const actual = new Set(ship.cells.map((c) => key(c.row, c.col)));
-    if (!expected.every((c) => actual.has(key(c.row, c.col)))) {
+    const actual = new Set(ship.cells.map(cellKey));
+    if (!expected.every((c) => actual.has(cellKey(c)))) {
       return { valid: false, error: `The ${id} must occupy adjacent cells.` };
     }
 
     for (const cell of ship.cells) {
-      const cellKey = key(cell.row, cell.col);
-      if (occupied.has(cellKey)) {
+      if (occupied.has(cellKey(cell))) {
         return { valid: false, error: `The ${id} overlaps another ship.` };
       }
-      occupied.add(cellKey);
+      occupied.add(cellKey(cell));
     }
   }
 
@@ -219,12 +199,6 @@ function cloneState(state) {
   };
 }
 
-function findShipAt(board, cell) {
-  return board.ships.find((s) =>
-    s.cells.some((c) => c.row === cell.row && c.col === cell.col)
-  );
-}
-
 function boardFullySunk(board) {
   return board.ships.every((s) => s.sunk);
 }
@@ -235,26 +209,26 @@ function boardFullySunk(board) {
  * Firing at an already-fired-upon cell is a no-op.
  */
 export function fireAt(state, targetBoard, cell) {
-  const cellKey = key(cell.row, cell.col);
+  const shotKey = cellKey(cell);
   const board = targetBoard === "player" ? state.playerBoard : state.aiBoard;
 
-  if (board.shotsReceived.has(cellKey)) {
+  if (board.shotsReceived.has(shotKey)) {
     return { newState: state, result: "no-op" };
   }
 
   const next = cloneState(state);
   const nextBoard = targetBoard === "player" ? next.playerBoard : next.aiBoard;
-  nextBoard.shotsReceived.add(cellKey);
+  nextBoard.shotsReceived.add(shotKey);
 
-  const ship = findShipAt(nextBoard, cell);
+  const ship = findShipAt(nextBoard.ships, cell);
   let result = "miss";
   let shipId = null;
 
   if (ship) {
     const nextShip = nextBoard.ships.find((s) => s.id === ship.id);
-    nextShip.hits.add(cellKey);
+    nextShip.hits.add(shotKey);
     shipId = nextShip.id;
-    const isSunk = nextShip.cells.every((c) => nextShip.hits.has(key(c.row, c.col)));
+    const isSunk = nextShip.cells.every((c) => nextShip.hits.has(cellKey(c)));
     if (isSunk) {
       nextShip.sunk = true;
       result = "sunk";
@@ -286,4 +260,17 @@ export function fireAt(state, targetBoard, cell) {
 
 export function isGameOver(state) {
   return state.status !== "in_progress";
+}
+
+/** Every history entry logged by `actor`, oldest first. */
+export function shotsBy(state, actor) {
+  return state.history.filter((entry) => entry.actor === actor);
+}
+
+/** The most recent history entry logged by `actor`, or `null`. */
+export function lastShotBy(state, actor) {
+  for (let i = state.history.length - 1; i >= 0; i--) {
+    if (state.history[i].actor === actor) return state.history[i];
+  }
+  return null;
 }
