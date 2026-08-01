@@ -463,3 +463,35 @@ sunk on their own, as the fallback.
   `06-exhibition-brief.md`, `07-coach-brief.md` written and ready to
   dispatch. Sessions 5-7 can run in parallel with each other and with the
   still-unstarted harness (Session 4).
+
+### 19. Cover the browser-facing modules with a hand-rolled fake DOM / Web Audio, not a test dependency
+
+- **Context:** A coverage pass (`node --test --experimental-test-coverage`)
+  put the repo at 59% lines overall, but that average hid the shape of the
+  gap: `engine.js` (99%), `ships.js` (100%) and `ai.js` (95%) were well
+  covered, while the three browser-facing modules were not —
+  `src/ui.js` 24%, `src/audio.js` 29%, `src/animations.js` 37%. Those are
+  exactly the modules the PRD requires to fail silently rather than break
+  gameplay, and none of that guarded behaviour was being exercised.
+- **Rationale:** The repo has no build step and no dependencies by design,
+  so pulling in jsdom to get a DOM would have been the single largest
+  change in this PR and would have contradicted that constraint. Instead
+  `tests/helpers/fake-dom.js` and `tests/helpers/fake-audio.js` implement
+  only the handful of APIs the two modules actually touch (element
+  creation/appending/removal, `getBoundingClientRect`, `classList`, style,
+  `setTimeout`, and the AudioContext node factories), with hooks to force
+  failures and to run timers on demand.
+- **Assessment: Good decision, with one accepted gap.** The fakes are
+  cheap, dependency-free, and let the tests assert the things that matter —
+  that `launchMissile` still calls `onArrive` on a browser without
+  `Element.animate`, that a failed melody note tears down the music loop
+  instead of throwing, that muting silences the master bus and skips
+  synthesis. The gap: `src/ui.js` stays at ~25%. Its exported helpers are
+  now fully covered, but the remaining ~900 lines are internal render
+  functions bound to the real `index.html`; faking that surface would mean
+  building most of a DOM, which is a jsdom-or-nothing decision better made
+  on its own rather than smuggled into a coverage pass.
+- **Outcome:** `tests/audio.test.js` and `tests/animations.test.js` added,
+  `tests/ai.test.js` and `tests/ui.test.js` extended. `src/audio.js`
+  29% -> 97%, `src/animations.js` 37% -> 100%, `src/ai.js` 95% -> 100%;
+  repo total 59% -> 78% lines. 56 tests passing, no production code changed.
