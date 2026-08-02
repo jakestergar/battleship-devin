@@ -13,6 +13,7 @@ import {
 } from "./engine.js";
 import { chooseMove as realChooseMove } from "./ai.js";
 import { shipSvg } from "./ships.js";
+import { mountExhibition } from "./exhibition.js";
 import {
   initAudio,
   isMuted,
@@ -1043,6 +1044,10 @@ function init() {
   els.startBattle.addEventListener("click", startBattle);
   els.muteToggle.addEventListener("click", onMuteToggle);
   document.addEventListener("keydown", onKeyDown);
+
+  // Self-contained AI-vs-AI mode. Owns its own container, its own styles and
+  // its own GameState; never throws (returns an inert controller instead).
+  mountExhibition(document.getElementById("exhibition-root"));
 
   enterPlacementPhase();
 }
