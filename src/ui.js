@@ -19,6 +19,7 @@ import { estimateWinProbability, describeOdds } from "./odds.js";
 import { mountFairness } from "./fairness-ui.js";
 import { mountExhibition } from "./exhibition.js";
 import { mountArena } from "./arena.js";
+import { mountTitle } from "./title.js";
 import {
   initAudio,
   isMuted,
@@ -128,9 +129,10 @@ let state = null;
 let busy = false;
 let explainOpen = false;
 
-// Placement-phase state. The engine is only handed a layout once the player
-// confirms it, so there is no "placing" game status to model in engine.js.
-let phase = "placement";
+// Screen state machine: "title" (attract screen) -> "placement" -> "battle".
+// The engine is only handed a layout once the player confirms it, so there is
+// no "placing" game status to model in engine.js.
+let phase = "title";
 let layout = [];
 let orientation = "horizontal";
 let selectedShipId = FLEET[0].id;
@@ -173,6 +175,7 @@ function cacheElements() {
   els.muteToggle = document.getElementById("mute-toggle");
   els.muteIcon = document.getElementById("mute-icon");
   els.muteLabel = document.getElementById("mute-label");
+  els.titleScreen = document.getElementById("title-screen");
 }
 
 function buildGrid(container, { clickable, label }) {
@@ -558,6 +561,9 @@ function announceNewSinks() {
 }
 
 function render() {
+  // The title screen is static markup owned by src/title.js; nothing in the
+  // game loop needs painting while it's up.
+  if (phase === "title") return;
   if (phase === "placement") {
     renderPlacement();
     renderStatusLine();
@@ -1028,8 +1034,29 @@ function startBattle() {
   render();
 }
 
+/**
+ * Shows the attract screen. Purely a screen switch — no game state is
+ * created until the player leaves it for placement.
+ */
+function enterTitlePhase() {
+  phase = "title";
+  els.endScreen.hidden = true;
+  els.theatre.hidden = true;
+  els.placementScreen.hidden = true;
+  if (els.titleScreen) els.titleScreen.hidden = false;
+  document.body.classList.add("phase-title");
+}
+
+/** Clicks a launcher another module mounted, if it managed to mount one. */
+function openLauncher(selector) {
+  const launcher = document.querySelector(selector);
+  if (launcher && typeof launcher.click === "function") launcher.click();
+}
+
 function enterPlacementPhase() {
   phase = "placement";
+  if (els.titleScreen) els.titleScreen.hidden = true;
+  document.body.classList.remove("phase-title");
   state = createGame();
   announcedSinks = 0;
   layout = [];
@@ -1061,6 +1088,16 @@ function onMuteToggle() {
 }
 
 function onKeyDown(event) {
+  if (phase === "title") {
+    if (event.key !== "Enter") return;
+    // Don't hijack Enter from a focused control (the secondary buttons) or
+    // from an open Arena / Exhibition overlay.
+    if (event.target && event.target.closest && event.target.closest("button, a, input")) return;
+    if (document.querySelector(".arena-overlay:not([hidden]), .exh-overlay:not([hidden])")) return;
+    event.preventDefault();
+    enterPlacementPhase();
+    return;
+  }
   if (phase !== "placement") return;
   if (event.key === "r" || event.key === "R") {
     event.preventDefault();
@@ -1083,6 +1120,9 @@ function init() {
   setUpReticle();
   mountFairness(document.getElementById("fairness-panel"), () => state);
   mountArena(document.getElementById("strategy-arena"));
+  // Second instance for the title screen — see the comment on
+  // #title-arena-root in index.html.
+  mountArena(document.getElementById("title-arena-root"));
   initAudio();
   renderMuteButton();
 
@@ -1120,7 +1160,29 @@ function init() {
   // its own GameState; never throws (returns an inert controller instead).
   mountExhibition(document.getElementById("exhibition-root"));
 
-  enterPlacementPhase();
+  // Attract screen. It is the first thing shown, but it is strictly additive:
+  // if it cannot mount, we drop straight to placement and the game is
+  // untouched.
+  let titleMounted = false;
+  try {
+    titleMounted = mountTitle(els.titleScreen, {
+      onStart: () => {
+        try {
+          playEffect("place");
+        } catch {
+          /* audio is decorative */
+        }
+        enterPlacementPhase();
+      },
+      onExhibition: () => openLauncher("#exhibition-root .exh-launch"),
+      onArena: () => openLauncher("#title-arena-root .arena-launch"),
+    });
+  } catch (error) {
+    console.warn("Title screen unavailable.", error);
+  }
+
+  if (titleMounted) enterTitlePhase();
+  else enterPlacementPhase();
 }
 
 if (typeof document !== "undefined") {

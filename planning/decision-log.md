@@ -753,3 +753,66 @@ sunk on their own, as the fallback.
   above are documented but unfixed; that fix belongs to whoever owns
   `engine.js`, and until it lands the "validates the shot" line in the
   technical design is aspirational.
+
+## Title / attract screen (`src/title.js`)
+
+- **The game opened on a form.** Load went straight to the fleet-placement
+  grid: a roster, a blank 10x10, four buttons. Functional, and completely
+  unpersuasive — nothing said what this thing is or why its AI is worth
+  playing against. Added a real title screen as the new first phase.
+- **Phase state machine extended, not bypassed.** `src/ui.js` already had
+  `phase = "placement" | "battle"`; it is now `"title" | "placement" |
+  "battle"`, with a single `enterTitlePhase()` that mirrors
+  `enterPlacementPhase()`. `render()` returns early on `"title"` (there is
+  nothing game-shaped to paint), and a `body.phase-title` class hides the
+  in-game masthead and status line rather than each screen toggling its own
+  visibility. *Assessment: good* — one entry point per screen, no scattered
+  `hidden` flags.
+- **Fixed-position, full-viewport — and that is load-bearing.** The battle
+  layout was recently fixed to scroll nowhere at 1280x620 through 1920x940.
+  A `position: fixed` title layer contributes nothing to
+  `documentElement.scrollHeight`, so the zero-scroll guarantee holds by
+  construction instead of by another round of height budgeting. Everything
+  inside is sized in vh-aware `clamp()`s; at `max-height: 660px` the corner
+  HUD, the provenance footnote and the fleet strip drop out.
+- **Every number is imported, none typed.** `titleStats()`, `hookLine()` and
+  `statsNote()` read `AI_AVG_SHOTS`, `RANDOM_BASELINE_AVG_SHOTS`,
+  `EFFICIENCY_VS_RANDOM` and `BASELINE_GAMES_PER_STRATEGY` from the generated
+  `src/baseline.js`. Re-running the harness re-words the title screen. Those
+  three functions are pure and unit-tested (`tests/title.test.js`, 8 tests),
+  which is the whole reason the copy lives in JS rather than in the markup.
+- **The buried features are now the two secondary CTAs.** The previous log
+  entry's own "honest weakness" was that the Strategy Arena was only
+  reachable from the launch screen. Both it and the AI-vs-AI exhibition are
+  now on the title screen. The title's buttons click the launchers those
+  modules already mount, so neither module's contract changed.
+  *Risky bit, flagged:* the in-placement arena instance lives inside
+  `#placement-screen`, which is `display: none` while the title is up, so its
+  overlay cannot be shown from there. Rather than move it (and change the
+  placement screen), a second launcher-less `mountArena()` instance is
+  mounted into `#title-arena-root` at body level and CSS hides only its
+  button. Two instances of a stateless stats panel is a small, contained
+  cost; the alternative was reaching into another module's DOM.
+- **Background: CSS, not canvas.** A single rotating conic-gradient wedge with
+  a 1px leading beam, over a static grid and ring pattern, masked with
+  `radial-gradient(closest-side, ...)` — `closest-side` matters: the default
+  `farthest-corner` never finishes fading inside the box and the sweep clips
+  as a hard rectangle. One compositor-only transform animation, no JS, no
+  dependency, `pointer-events: none`, and fully disabled (as a static wedge)
+  under `prefers-reduced-motion`.
+- **Stat figures are mono, not the stencil display face.** Big Shoulders
+  Stencil cuts slots through digits and "44.9" — the single most important
+  string on the screen — read as glitched at 40px. The display face keeps the
+  wordmark and tagline; the measured numbers get JetBrains Mono.
+- **Failure is survivable.** `mountTitle()` never throws; it returns `false`,
+  and `init()` then calls `enterPlacementPhase()` directly, so a broken
+  attract screen cannot make the game unreachable (PRD Section 5). The markup
+  shell is static in `index.html` for the same reason.
+- **Honest weaknesses.** The composition is still a centred text stack — a
+  confident one, but a stack; a genuinely art-directed title would carry an
+  illustration, and the faint fleet silhouette strip is the only real imagery.
+  The radar is decorative rather than diegetic: it is not showing a real
+  probability field, which the AI could actually supply. There is no route
+  *back* to the title screen once you leave it (New Game returns to
+  placement), and no attract-mode timeout that demos a match. The keyboard
+  affordance is Enter only.
