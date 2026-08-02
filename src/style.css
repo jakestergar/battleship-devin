@@ -1778,3 +1778,126 @@ body.phase-title #exhibition-root .exh-launch {
 .cell.is-scanned-clear {
   box-shadow: inset 0 0 0 1px rgba(143, 163, 179, 0.22);
 }
+
+/* ---------------------------------------------------------------------------
+   "How It Works" panel
+   The measured numbers and the explanation of the algorithm used to sit on the
+   title screen. They are interesting to a reviewer and noise to a player, so
+   they live one click away instead of in front of the play button.
+--------------------------------------------------------------------------- */
+
+.about-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(4, 10, 18, 0.86);
+}
+
+.about-panel[hidden] {
+  display: none;
+}
+
+.about-card {
+  position: relative;
+  width: min(560px, 100%);
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 26px 28px 24px;
+  border: 1px solid rgba(201, 154, 62, 0.4);
+  background: var(--hull);
+}
+
+.about-card h2 {
+  margin: 0 0 12px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 26px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--brass);
+}
+
+.about-hook {
+  margin: 0 0 16px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--fog);
+}
+
+.about-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.about-stat {
+  padding: 10px 12px;
+  border: 1px solid rgba(220, 230, 235, 0.12);
+  background: rgba(10, 20, 32, 0.5);
+}
+
+.about-stat-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--fog-dim);
+}
+
+.about-stat-figure {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin-top: 4px;
+  font-family: var(--font-mono);
+}
+
+.about-stat-figure strong {
+  font-size: 22px;
+  color: var(--phosphor);
+}
+
+.about-stat-efficiency .about-stat-figure strong {
+  color: var(--brass);
+}
+
+.about-stat-figure em {
+  font-style: normal;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fog-dim);
+}
+
+.about-note {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--fog-dim);
+}
+
+.about-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  padding: 2px 8px;
+  border: 1px solid rgba(220, 230, 235, 0.18);
+  background: transparent;
+  color: var(--fog-dim);
+  font-size: 18px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.about-close:hover {
+  color: var(--fog);
+  border-color: var(--fog-dim);
+}

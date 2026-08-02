@@ -84,23 +84,23 @@ export function mountTitle(rootEl, handlers = {}) {
     if (!rootEl || !rootEl.ownerDocument) return false;
     const doc = rootEl.ownerDocument;
 
-    const hook = rootEl.querySelector("#title-hook");
+    const hook = rootEl.querySelector("#about-hook");
     if (hook) hook.textContent = hookLine();
 
-    const note = rootEl.querySelector("#title-stats-note");
+    const note = rootEl.querySelector("#about-note");
     if (note) note.textContent = statsNote();
 
-    const statsEl = rootEl.querySelector("#title-stats");
+    const statsEl = rootEl.querySelector("#about-stats");
     if (statsEl) {
       statsEl.textContent = "";
       for (const stat of titleStats()) {
         const li = doc.createElement("li");
-        li.className = `title-stat title-stat-${stat.key}`;
+        li.className = `about-stat about-stat-${stat.key}`;
         const label = doc.createElement("span");
-        label.className = "title-stat-label";
+        label.className = "about-stat-label";
         label.textContent = stat.label;
         const figure = doc.createElement("span");
-        figure.className = "title-stat-figure";
+        figure.className = "about-stat-figure";
         const value = doc.createElement("strong");
         value.textContent = stat.value;
         const unit = doc.createElement("em");
@@ -146,6 +146,23 @@ export function mountTitle(rootEl, handlers = {}) {
     wire("#title-start", handlers.onStart);
     wire("#title-exhibition", handlers.onExhibition);
     wire("#title-arena", handlers.onArena);
+
+    // "How It Works" — the technical detail belongs one click away, not on
+    // the front door. A player wants to play; the measured numbers are for
+    // whoever goes looking.
+    const about = rootEl.querySelector("#about-panel");
+    const setAbout = (open) => {
+      if (!about) return;
+      about.hidden = !open;
+    };
+    rootEl.querySelector("#title-about")?.addEventListener("click", () => setAbout(true));
+    rootEl.querySelector("#about-close")?.addEventListener("click", () => setAbout(false));
+    about?.addEventListener("click", (event) => {
+      if (event.target === about) setAbout(false);
+    });
+    doc.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && about && !about.hidden) setAbout(false);
+    });
 
     // Mode picker. Purely presentational here — it reports the choice upward
     // and never starts a game itself, so the CTA stays the single way in.

@@ -54,11 +54,7 @@
         <div class="title-content">
           <p class="title-eyebrow"><span class="title-eyebrow-dot"></span>Bayesian Search Theory engine · online</p>
           <h1 class="title-wordmark"><span>Battle</span><span class="title-wordmark-2">ship</span></h1>
-          <p class="title-tagline">Luck runs out. Probability doesn&rsquo;t.</p>
-          <p id="title-hook" class="title-hook"></p>
-
-          <ul id="title-stats" class="title-stats"></ul>
-          <p id="title-stats-note" class="title-stats-note"></p>
+          <p class="title-tagline">Sink or get sunk.</p>
 
           <div class="title-modes" role="radiogroup" aria-label="Game mode">
             <button
@@ -70,7 +66,7 @@
               data-mode="classic"
             >
               <span class="title-mode-name">Classic</span>
-              <span class="title-mode-desc">One shot per turn. Pure deduction.</span>
+              <span class="title-mode-desc">One shot per turn.</span>
             </button>
             <button
               id="mode-advanced"
@@ -97,14 +93,27 @@
               <button id="title-arena" class="title-ghost" type="button">
                 <span class="title-ghost-dot" aria-hidden="true"></span>Strategy Arena
               </button>
+              <button id="title-about" class="title-ghost" type="button">
+                <span class="title-ghost-dot" aria-hidden="true"></span>How It Works
+              </button>
             </div>
           </div>
 
           <ul id="title-fleet" class="title-fleet" aria-hidden="true"></ul>
         </div>
 
+        <div id="about-panel" class="about-panel" role="dialog" aria-modal="true" aria-labelledby="about-title" hidden>
+          <div class="about-card">
+            <button id="about-close" class="about-close" type="button" aria-label="Close">&times;</button>
+            <h2 id="about-title">How It Works</h2>
+            <p id="about-hook" class="about-hook"></p>
+            <ul id="about-stats" class="about-stats"></ul>
+            <p id="about-note" class="about-note"></p>
+          </div>
+        </div>
+
         <p class="title-foot">
-          Press <span class="key-hint">Enter</span> to deploy · single player · no install
+          Press <span class="key-hint">Enter</span> to deploy
         </p>
       </section>
       <!-- ================= end TITLE SCREEN ================= -->
