@@ -444,7 +444,7 @@ function renderExplain() {
   if (!explainOpen) {
     els.explainPanel.classList.remove("explain-active");
     els.explainPanel.textContent =
-      "Click the AI's most recent shot marker on the good guys to see why it fired there.";
+      "Click the AI's most recent shot marker on your fleet to see why it fired there.";
     return;
   }
   els.explainPanel.classList.add("explain-active");
@@ -509,13 +509,13 @@ function renderStatusLine() {
   }
   if (isGameOver(state)) {
     els.statusLine.textContent =
-      state.status === "player_won" ? "Bad guys destroyed." : "The good guys are lost.";
+      state.status === "player_won" ? "Enemy fleet destroyed." : "Your fleet is lost.";
     return;
   }
   const last = state.history[state.history.length - 1];
   els.statusLine.textContent = last
     ? `${describeResult(last)} Your move.`
-    : "Your move — fire on the bad guys.";
+    : "Your move — fire on the enemy waters.";
 }
 
 function renderEndScreen() {
@@ -528,8 +528,8 @@ function renderEndScreen() {
   els.endTitle.textContent = won ? "Victory" : "Defeat";
   const shots = state.history.filter((e) => e.actor === (won ? "player" : "ai")).length;
   els.endSummary.textContent = won
-    ? `You sank the bad guys in ${shots} shots.`
-    : `The AI sank the good guys in ${shots} shots.`;
+    ? `You sank the enemy fleet in ${shots} shots.`
+    : `The AI sank your fleet in ${shots} shots.`;
   els.endScreen.hidden = false;
 }
 

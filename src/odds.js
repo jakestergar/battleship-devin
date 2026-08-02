@@ -244,7 +244,7 @@ function finished(playerProbability, playerNeeds, aiNeeds, state) {
 export function describeOdds(odds) {
   if (!odds) return "";
   if (odds.settled) {
-    return odds.player === 1 ? "Bad guys destroyed." : "The good guys are lost.";
+    return odds.player === 1 ? "Enemy fleet destroyed." : "Your fleet is lost.";
   }
   const pct = Math.round(odds.player * 100);
   const lead = Math.abs(pct - 50);
