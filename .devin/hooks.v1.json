@@ -1,0 +1,14 @@
+{
+  "PostToolUse": [
+    {
+      "matcher": "edit|write",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "python3 scripts/guard-css-braces.py",
+          "timeout": 10
+        }
+      ]
+    }
+  ]
+}
