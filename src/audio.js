@@ -79,7 +79,21 @@ function ensureContext() {
   ctx = new Ctor();
   master = ctx.createGain();
   master.gain.value = muted ? 0 : 0.9;
-  master.connect(ctx.destination);
+
+  // A limiter on the way out. The layered effects deliberately stack several
+  // sources at the same instant — an explosion is a crack plus a body plus a
+  // sub boom — and those peaks sum past 1.0, which digital audio renders as
+  // harsh clipping rather than as loudness. A fast, high-ratio compressor
+  // catches the transients so the layering can stay aggressive without
+  // distorting, and every effect does not have to be hand-balanced against
+  // every other one.
+  const limiter = ctx.createDynamicsCompressor();
+  limiter.threshold.value = -6;
+  limiter.knee.value = 4;
+  limiter.ratio.value = 12;
+  limiter.attack.value = 0.002;
+  limiter.release.value = 0.18;
+  master.connect(limiter).connect(ctx.destination);
   musicGain = ctx.createGain();
   musicGain.gain.value = 0.14;
   musicGain.connect(master);
@@ -207,57 +221,184 @@ export function toggleMusicTrack() {
   return setMusicTrack(track === "chip" ? "naval" : "chip");
 }
 
-/** Noise burst shaped by a filter — the basis of splashes and explosions. */
-function playNoise({ duration, peak, filter, frequency, sweepTo }) {
-  const now = ctx.currentTime;
+/**
+ * Noise burst shaped by a filter — the basis of splashes and explosions.
+ *
+ * `delay` lets one effect be built from several bursts arriving in sequence
+ * (a cannon is a crack, then a body, then a sub thump), and `attack` keeps a
+ * burst from clicking when it is meant to swell rather than snap.
+ */
+function playNoise({
+  duration,
+  peak,
+  filter,
+  frequency,
+  sweepTo,
+  q = 1,
+  delay = 0,
+  attack = 0.002,
+  shape = "decay",
+}) {
+  const at = ctx.currentTime + delay;
   const frames = Math.floor(ctx.sampleRate * duration);
   const buffer = ctx.createBuffer(1, frames, ctx.sampleRate);
   const data = buffer.getChannelData(0);
   for (let i = 0; i < frames; i++) {
-    data[i] = (Math.random() * 2 - 1) * (1 - i / frames);
+    const t = i / frames;
+    // "decay" is a straight fade for transients; "boom" holds the body
+    // briefly before falling away, which is what makes an explosion read as
+    // an explosion rather than as a click.
+    const envelope = shape === "boom" ? Math.pow(1 - t, 1.7) : 1 - t;
+    data[i] = (Math.random() * 2 - 1) * envelope;
   }
   const source = ctx.createBufferSource();
   source.buffer = buffer;
   const biquad = ctx.createBiquadFilter();
   biquad.type = filter;
-  biquad.frequency.setValueAtTime(frequency, now);
+  biquad.frequency.setValueAtTime(frequency, at);
+  biquad.Q.value = q;
   if (typeof sweepTo === "number") {
-    biquad.frequency.exponentialRampToValueAtTime(sweepTo, now + duration);
+    biquad.frequency.exponentialRampToValueAtTime(sweepTo, at + duration);
   }
   const gain = ctx.createGain();
-  gain.gain.setValueAtTime(peak, now);
-  gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+  gain.gain.setValueAtTime(0, at);
+  gain.gain.linearRampToValueAtTime(peak, at + attack);
+  gain.gain.exponentialRampToValueAtTime(0.0001, at + duration);
   source.connect(biquad).connect(gain).connect(master);
-  source.start(now);
+  source.start(at);
 }
 
-function playTone({ type, from, to, duration, peak, delay = 0 }) {
+/**
+ * The shell in flight: a descending whistle with a little vibrato, band-passed
+ * so it reads as air rather than as a synth tone. Swells in and fades out so
+ * it sits under the cannon's tail instead of interrupting it.
+ */
+function playWhistle({ from = 2100, to = 620, duration = 0.5, peak = 0.1, delay = 0 }) {
   const at = ctx.currentTime + delay;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
-  osc.type = type;
+  const band = ctx.createBiquadFilter();
+  const vibrato = ctx.createOscillator();
+  const vibratoDepth = ctx.createGain();
+
+  osc.type = "sine";
   osc.frequency.setValueAtTime(from, at);
   osc.frequency.exponentialRampToValueAtTime(to, at + duration);
+
+  vibrato.frequency.value = 11;
+  vibratoDepth.gain.value = 18;
+  vibrato.connect(vibratoDepth).connect(osc.frequency);
+
+  band.type = "bandpass";
+  band.frequency.setValueAtTime(from, at);
+  band.frequency.exponentialRampToValueAtTime(to, at + duration);
+  band.Q.value = 2.2;
+
   gain.gain.setValueAtTime(0, at);
-  gain.gain.linearRampToValueAtTime(peak, at + 0.02);
+  gain.gain.linearRampToValueAtTime(peak, at + duration * 0.25);
+  gain.gain.setValueAtTime(peak, at + duration * 0.6);
   gain.gain.exponentialRampToValueAtTime(0.0001, at + duration);
-  osc.connect(gain).connect(master);
+
+  osc.connect(band).connect(gain).connect(master);
   osc.start(at);
+  vibrato.start(at);
   osc.stop(at + duration + 0.05);
+  vibrato.stop(at + duration + 0.05);
 }
 
 const EFFECTS = {
-  fire: () => playTone({ type: "sawtooth", from: 900, to: 120, duration: 0.28, peak: 0.22 }),
-  miss: () =>
-    playNoise({ duration: 0.5, peak: 0.3, filter: "lowpass", frequency: 1400, sweepTo: 220 }),
+  // A cannon is three sounds inside 400ms: the crack of the charge, the body
+  // of the report, and the sub-bass thump you feel. Layering them is what
+  // separates a gun from a beep. The whistle follows the shell into the air
+  // and is timed to run out roughly as the missile animation lands.
+  fire: () => {
+    playNoise({ duration: 0.05, peak: 0.45, filter: "highpass", frequency: 2600, attack: 0.001 });
+    playNoise({
+      duration: 0.34,
+      peak: 0.5,
+      filter: "lowpass",
+      frequency: 900,
+      sweepTo: 90,
+      shape: "boom",
+      attack: 0.004,
+    });
+    playTone({ type: "sine", from: 130, to: 38, duration: 0.4, peak: 0.42 });
+    playWhistle({ from: 2000, to: 640, duration: 0.5, peak: 0.09, delay: 0.13 });
+  },
+
+  // Splash: the plunk of displacement, then the burst of water, then spray.
+  miss: () => {
+    playTone({ type: "sine", from: 440, to: 120, duration: 0.13, peak: 0.22 });
+    playNoise({
+      duration: 0.34,
+      peak: 0.42,
+      filter: "bandpass",
+      frequency: 900,
+      sweepTo: 220,
+      q: 0.9,
+    });
+    playNoise({
+      duration: 0.5,
+      peak: 0.16,
+      filter: "highpass",
+      frequency: 2400,
+      delay: 0.05,
+    });
+  },
+
+  // Explosion: crack, body, sub boom, then debris. The debris is what stops
+  // it sounding like a single filtered noise burst.
   hit: () => {
-    playNoise({ duration: 0.7, peak: 0.55, filter: "lowpass", frequency: 900, sweepTo: 90 });
-    playTone({ type: "square", from: 180, to: 40, duration: 0.5, peak: 0.2 });
+    playNoise({ duration: 0.05, peak: 0.5, filter: "highpass", frequency: 3200, attack: 0.001 });
+    playNoise({
+      duration: 0.85,
+      peak: 0.62,
+      filter: "lowpass",
+      frequency: 1900,
+      sweepTo: 70,
+      shape: "boom",
+      attack: 0.005,
+    });
+    playTone({ type: "sine", from: 115, to: 28, duration: 0.75, peak: 0.5 });
+    for (let i = 0; i < 5; i++) {
+      playNoise({
+        duration: 0.05,
+        peak: 0.1,
+        filter: "bandpass",
+        frequency: 900 + Math.random() * 2200,
+        q: 3,
+        delay: 0.12 + Math.random() * 0.45,
+      });
+    }
   },
+
+  // Sinking is the same explosion, bigger, plus the groan of a hull going
+  // under — a slow detuned fall well below the explosion's own tail.
   sunk: () => {
-    playNoise({ duration: 1.1, peak: 0.6, filter: "lowpass", frequency: 700, sweepTo: 60 });
-    playTone({ type: "sawtooth", from: 220, to: 35, duration: 1.2, peak: 0.24 });
+    playNoise({ duration: 0.06, peak: 0.55, filter: "highpass", frequency: 3000, attack: 0.001 });
+    playNoise({
+      duration: 1.3,
+      peak: 0.68,
+      filter: "lowpass",
+      frequency: 2200,
+      sweepTo: 50,
+      shape: "boom",
+      attack: 0.006,
+    });
+    playTone({ type: "sine", from: 100, to: 22, duration: 1.2, peak: 0.55 });
+    playTone({ type: "sawtooth", from: 190, to: 32, duration: 1.6, peak: 0.16, delay: 0.25 });
+    for (let i = 0; i < 8; i++) {
+      playNoise({
+        duration: 0.06,
+        peak: 0.1,
+        filter: "bandpass",
+        frequency: 700 + Math.random() * 2600,
+        q: 3,
+        delay: 0.15 + Math.random() * 0.9,
+      });
+    }
   },
+
   place: () => playTone({ type: "triangle", from: 520, to: 700, duration: 0.1, peak: 0.16 }),
   rotate: () => playTone({ type: "triangle", from: 380, to: 520, duration: 0.08, peak: 0.13 }),
   invalid: () => playTone({ type: "square", from: 200, to: 140, duration: 0.16, peak: 0.14 }),
