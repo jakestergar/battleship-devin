@@ -843,3 +843,101 @@ body {
     animation: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Sink callout
+   Full-bleed moment when a ship goes down. The artwork is a 3/4 perspective
+   render on near-black with no alpha, so `screen` blending is what removes
+   the background — do not "fix" this by adding a transparent PNG unless the
+   art is re-authored, because the grid floor and reflections are part of the
+   same baked-in background.
+--------------------------------------------------------------------------- */
+
+.sink-callout {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 180ms ease-out;
+  /* Scrim: without it the callout competes with the boards behind it. Kept
+     dark so the `screen`-blended artwork still reads as a glow, not a card. */
+  background: radial-gradient(
+    ellipse at center,
+    rgba(4, 10, 18, 0.9) 0%,
+    rgba(4, 10, 18, 0.82) 45%,
+    rgba(4, 10, 18, 0.66) 100%
+  );
+}
+
+.sink-callout.is-live {
+  opacity: 1;
+}
+
+.sink-card {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 18px 40px 22px;
+  transform: scale(0.94);
+  transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sink-callout.is-live .sink-card {
+  transform: scale(1);
+}
+
+/* The PNGs carry a luminance-derived alpha channel, so most of the background
+   is already gone; `screen` mops up the residual near-black halo that the
+   alpha ramp leaves behind around the glow. Both together, deliberately. */
+.sink-art {
+  width: min(38vw, 380px);
+  height: auto;
+  margin-bottom: 4px;
+  mix-blend-mode: screen;
+  filter: drop-shadow(0 0 26px rgba(232, 67, 46, 0.35));
+}
+
+.sink-name {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 46px;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sink-meta {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--fog-dim);
+}
+
+/* Klaxon is reserved for damage, so losing your own ship is the only case
+   that earns it; sinking an enemy reads as phosphor (live/active/win). */
+.sink-own .sink-name {
+  color: var(--klaxon);
+  text-shadow: 0 0 30px rgba(232, 67, 46, 0.5);
+}
+
+.sink-enemy .sink-name {
+  color: var(--phosphor);
+  text-shadow: 0 0 30px rgba(58, 219, 118, 0.45);
+}
+
+.sink-enemy .sink-art {
+  filter: drop-shadow(0 0 26px rgba(58, 219, 118, 0.3));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sink-callout,
+  .sink-card {
+    transition: none;
+  }
+}

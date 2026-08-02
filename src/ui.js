@@ -13,6 +13,7 @@ import {
 } from "./engine.js";
 import { chooseMove as realChooseMove } from "./ai.js";
 import { shipSvg } from "./ships.js";
+import { mountSinkCallout } from "./sink.js";
 import {
   initAudio,
   isMuted,
@@ -129,6 +130,9 @@ let layout = [];
 let orientation = "horizontal";
 let selectedShipId = FLEET[0].id;
 let placementMessage = "";
+let sinkCallout = null;
+// How far through `state.history` the sink callout has already reported.
+let announcedSinks = 0;
 
 function cacheElements() {
   els.aiBoard = document.getElementById("ai-board");
@@ -492,6 +496,33 @@ function renderEndScreen() {
   els.endScreen.hidden = false;
 }
 
+/**
+ * Fires the sink callout for any ship that went down since the last render.
+ *
+ * Driven off `history` rather than off the shot handlers so there is exactly
+ * one place that decides a sinking happened, no matter which code path caused
+ * it. `announcedSinks` tracks position in the log; it is reset whenever a new
+ * game starts.
+ */
+function announceNewSinks() {
+  try {
+    if (!sinkCallout) return;
+    for (let i = announcedSinks; i < state.history.length; i++) {
+      const entry = state.history[i];
+      if (entry.result !== "sunk" || !entry.shipId) continue;
+      // The AI firing means the ship lost was the player's.
+      const side = entry.actor === "ai" ? "own" : "enemy";
+      const board = side === "own" ? state.playerBoard : state.aiBoard;
+      const ship = board.ships.find((s) => s.id === entry.shipId);
+      sinkCallout.announce(entry.shipId, ship ? ship.cells.length : 0, side);
+    }
+  } catch {
+    /* decorative — the roster and status line already report the sinking */
+  } finally {
+    announcedSinks = state.history.length;
+  }
+}
+
 function render() {
   if (phase === "placement") {
     renderPlacement();
@@ -506,6 +537,7 @@ function render() {
   renderExplain();
   renderShotCount();
   renderStatusLine();
+  announceNewSinks();
   renderEndScreen();
 }
 
@@ -949,6 +981,7 @@ function startBattle() {
   }
   state = createGame(layout);
   phase = "battle";
+  announcedSinks = 0;
   busy = false;
   explainOpen = false;
   placementMessage = "";
@@ -963,6 +996,7 @@ function startBattle() {
 function enterPlacementPhase() {
   phase = "placement";
   state = createGame();
+  announcedSinks = 0;
   layout = [];
   orientation = "horizontal";
   selectedShipId = FLEET[0].id;
@@ -1043,6 +1077,8 @@ function init() {
   els.startBattle.addEventListener("click", startBattle);
   els.muteToggle.addEventListener("click", onMuteToggle);
   document.addEventListener("keydown", onKeyDown);
+
+  sinkCallout = mountSinkCallout(document.body);
 
   enterPlacementPhase();
 }
