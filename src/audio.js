@@ -196,30 +196,68 @@ function stepMelody() {
  * Starts the background music. Must be called from a user gesture (click /
  * keypress) or the browser's autoplay policy will keep the context suspended.
  */
+/**
+ * Actually begins the selected track. Only ever called with a running context.
+ */
+function beginTrack() {
+  if (started) return;
+  started = true;
+  // musicGain's 0.14 was tuned for the ambient drone, which is a continuous
+  // bed sitting under everything. The score and the chiptune are foreground
+  // music and need considerably more level.
+  try {
+    musicGain.gain.value = track === "naval" ? 0.14 : 0.45;
+  } catch {
+    /* gain node gone; the track will still play at whatever level it has */
+  }
+  if (track === "score") {
+    if (!score) score = createScore(ctx, musicGain);
+    score.start();
+  } else if (track === "chip") {
+    if (!chiptune) chiptune = createChiptune(ctx, musicGain);
+    chiptune.start();
+  } else {
+    startPadDrone();
+    stepMelody();
+    melodyTimer = setInterval(stepMelody, BEAT_MS);
+  }
+}
+
+/**
+ * Starts the background music, coping with the browser's autoplay policy.
+ *
+ * The earlier version called `ctx.resume()` and then set `started = true`
+ * regardless of whether the resume actually succeeded. Since a fresh
+ * AudioContext is created *suspended* and only resumes after a user gesture,
+ * the very first call — made on page load — poisoned the flag: the track was
+ * marked as started while the context was frozen, so every later call
+ * short-circuited on `if (started) return` and nothing was ever audible.
+ *
+ * The visible symptom was a mute button reading "Sound on" with no sound, that
+ * needed two clicks to work: the first click resumed the context (and muted),
+ * the second unmuted an already-running but inaudible score.
+ *
+ * Now the flag is only set once the context is genuinely running, and a
+ * suspended context retries after the resume resolves.
+ */
 export function startMusic() {
   try {
     if (!ensureContext()) return;
-    if (ctx.state === "suspended") ctx.resume();
-    if (started) return;
-    started = true;
-    // musicGain's 0.14 was tuned for the ambient drone, which is a continuous
-    // bed sitting under everything. The score and the chiptune are foreground
-    // music and need considerably more level.
-    try {
-      musicGain.gain.value = track === "naval" ? 0.14 : 0.45;
-    } catch {
-      /* gain node gone; the track will still play at whatever level it has */
+    if (ctx.state === "running") {
+      beginTrack();
+      return;
     }
-    if (track === "score") {
-      if (!score) score = createScore(ctx, musicGain);
-      score.start();
-    } else if (track === "chip") {
-      if (!chiptune) chiptune = createChiptune(ctx, musicGain);
-      chiptune.start();
-    } else {
-      startPadDrone();
-      stepMelody();
-      melodyTimer = setInterval(stepMelody, BEAT_MS);
+    // Suspended. resume() rejects until the user has interacted with the page,
+    // so retry on success and leave `started` alone on failure.
+    const resumed = ctx.resume();
+    if (resumed && typeof resumed.then === "function") {
+      resumed
+        .then(() => {
+          if (!muted && ctx.state === "running") beginTrack();
+        })
+        .catch(() => {
+          /* still blocked; the next gesture will try again */
+        });
     }
   } catch {
     started = false;
@@ -235,6 +273,11 @@ export function stopMusic() {
     /* nothing to clean up */
   }
   melodyTimer = null;
+}
+
+/** True once a track is genuinely playing on a running context. */
+export function isMusicStarted() {
+  return started && !!ctx && ctx.state === "running";
 }
 
 export function getMusicTrack() {

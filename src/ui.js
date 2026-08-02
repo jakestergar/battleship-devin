@@ -34,6 +34,7 @@ import {
   initAudio,
   isMuted,
   playEffect,
+  isMusicStarted,
   startMusic,
   toggleMuted,
 } from "./audio.js";
@@ -1218,15 +1219,23 @@ function armMusicOnFirstGesture() {
   try {
     if (!isMuted()) startMusic();
 
+    const events = ["pointerdown", "keydown", "touchstart"];
     const kick = () => {
       try {
         if (!isMuted()) startMusic();
+        // Deliberately NOT `once`: resuming an AudioContext can fail even on a
+        // real gesture, and a single missed attempt would leave the game
+        // silent for the whole session. Keep listening until audio is
+        // genuinely running, then unhook.
+        if (isMusicStarted()) {
+          for (const event of events) document.removeEventListener(event, kick);
+        }
       } catch {
         /* audio is decorative */
       }
     };
-    for (const event of ["pointerdown", "keydown", "touchstart"]) {
-      document.addEventListener(event, kick, { once: true, passive: true });
+    for (const event of events) {
+      document.addEventListener(event, kick, { passive: true });
     }
   } catch {
     /* audio is decorative — never block startup over it */
