@@ -1201,6 +1201,38 @@ function enterPlacementPhase() {
   render();
 }
 
+/**
+ * Starts the score as early as the browser will allow.
+ *
+ * Music should be playing on the title screen, but browsers refuse to start
+ * audio until the user has interacted with the page — a bare `play()` on load
+ * is rejected, silently. So: try immediately (it succeeds if the user has
+ * already engaged with this origin), and otherwise arm a one-shot listener for
+ * the first gesture of any kind. On the title screen that is usually the first
+ * click on a mode or a button, long before the game itself starts.
+ *
+ * Listeners remove themselves and are registered with `once`, so this can
+ * never fire twice or leak.
+ */
+function armMusicOnFirstGesture() {
+  try {
+    if (!isMuted()) startMusic();
+
+    const kick = () => {
+      try {
+        if (!isMuted()) startMusic();
+      } catch {
+        /* audio is decorative */
+      }
+    };
+    for (const event of ["pointerdown", "keydown", "touchstart"]) {
+      document.addEventListener(event, kick, { once: true, passive: true });
+    }
+  } catch {
+    /* audio is decorative — never block startup over it */
+  }
+}
+
 function renderMuteButton() {
   const off = isMuted();
   els.muteToggle.setAttribute("aria-pressed", String(off));
@@ -1288,6 +1320,7 @@ function init() {
   document.addEventListener("keydown", onKeyDown);
 
   sinkCallout = mountSinkCallout(document.body);
+  armMusicOnFirstGesture();
   // Self-contained AI-vs-AI mode. Owns its own container, its own styles and
   // its own GameState; never throws (returns an inert controller instead).
   mountExhibition(document.getElementById("exhibition-root"));
