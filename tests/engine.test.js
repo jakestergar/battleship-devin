@@ -74,7 +74,7 @@ test("hitting every cell of a ship marks it sunk and reports 'sunk' on the final
   for (const ship of board.ships) {
     let sunkResult = null;
     for (const cell of ship.cells) {
-      const { newState, result } = fireAt(current, "ai", cell);
+      const { newState, result } = fireAt({ ...current, turn: "player" }, "ai", cell);
       current = newState;
       sunkResult = result;
     }
@@ -88,7 +88,7 @@ test("isGameOver / status agree once a full fleet is sunk", () => {
   let current = createGame();
   for (const ship of current.aiBoard.ships) {
     for (const cell of ship.cells) {
-      current = fireAt(current, "ai", cell).newState;
+      current = fireAt({ ...current, turn: "player" }, "ai", cell).newState;
     }
   }
   assert.equal(isGameOver(current), true);

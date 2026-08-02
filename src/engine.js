@@ -234,7 +234,58 @@ function boardFullySunk(board) {
  * Pure: returns { newState, result } and never mutates `state`.
  * Firing at an already-fired-upon cell is a no-op.
  */
+/**
+ * A cell is only valid if it is a whole number inside the grid. The integer
+ * check matters as much as the bounds check: a fractional coordinate produced
+ * a key like "1.5,2" that matched no cell on the board, so the shot could
+ * never be cleared and permanently inflated the shot count.
+ */
+function isValidCell(cell, size) {
+  return (
+    cell != null &&
+    Number.isInteger(cell.row) &&
+    Number.isInteger(cell.col) &&
+    cell.row >= 0 &&
+    cell.col >= 0 &&
+    cell.row < size &&
+    cell.col < size
+  );
+}
+
 export function fireAt(state, targetBoard, cell) {
+  // Guard clauses added after the playtest harness audited the contract
+  // (see BUGS.md). The engine previously validated exactly one thing —
+  // whether the cell had already been fired at — and silently accepted
+  // everything else, including off-board coordinates, fractional
+  // coordinates, shots after the game had ended, and unknown board names.
+  // None of these are reachable through normal play, which is precisely why
+  // nobody had noticed them.
+
+  if (targetBoard !== "player" && targetBoard !== "ai") {
+    // Previously fell through a ternary's else branch and silently hit the
+    // AI's board, so a typo'd board name misfired instead of failing.
+    return { newState: state, result: "no-op" };
+  }
+
+  if (state.status !== "in_progress") {
+    // A shot after the game ends appended to the history that the Battle
+    // Report and efficiency stat both read, and flipped `turn` back to a live
+    // value while `status` stayed terminal.
+    return { newState: state, result: "no-op" };
+  }
+
+  if (!isValidCell(cell, state.playerBoard.size)) {
+    return { newState: state, result: "no-op" };
+  }
+
+  // You may only fire at your opponent's board. Without this, a caller bug
+  // could fire at its own fleet and log it as the opponent's shot — damaging
+  // the wrong side and potentially handing over the win.
+  const expectedTarget = state.turn === "player" ? "ai" : "player";
+  if (targetBoard !== expectedTarget) {
+    return { newState: state, result: "no-op" };
+  }
+
   const cellKey = key(cell.row, cell.col);
   const board = targetBoard === "player" ? state.playerBoard : state.aiBoard;
 

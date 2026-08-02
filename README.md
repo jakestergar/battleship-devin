@@ -7,13 +7,15 @@ turn, how many valid remaining ship placements pass through each cell
 (weighted heavily toward cells near unresolved hits) and fires at the
 highest-probability cell.
 
-**[Play it live](#)** _(link added once deployed to GitHub Pages)_
+**▶ [Play it live](https://jakestergar.github.io/battleship-devin/)**
+
+**[Bugs found and how they were fixed](./BUGS.md)** — the required write-up.
 
 ## Why this exists
 This is a Cognition interview exercise (Account Director, Enterprise). The
 full planning process — PRD, technical design, and a complete decision log
-(including rejected ideas and self-corrections) — is in [`planning/`](./planning),
-including the bug-fix write-up once complete.
+(including rejected ideas and self-corrections) — is in [`planning/`](./planning).
+The bug write-up is in [`BUGS.md`](./BUGS.md).
 
 ## What makes the AI interesting
 - **Bayesian Search Theory targeting** — not a claim, it's visible: toggle

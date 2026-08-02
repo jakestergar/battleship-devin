@@ -76,13 +76,20 @@ test("randomChooseMove only ever picks an unattacked cell on the target board", 
 });
 
 test("randomChooseMove returns null once every cell has been fired at", () => {
-  let state = { ...createGame(), turn: "ai" };
+  // Built directly rather than by firing 100 shots: the engine now rejects
+  // shots once the game is over (see BUGS.md), so a fully-fired board is no
+  // longer reachable through fireAt in a single game. The subject here is
+  // randomChooseMove's behaviour on an exhausted board, not the turn loop.
+  const base = createGame();
+  const every = new Set();
   for (let row = 0; row < BOARD_SIZE; row++) {
-    for (let col = 0; col < BOARD_SIZE; col++) {
-      state = fireAt(state, "player", { row, col }).newState;
-      state = { ...state, turn: "ai" };
-    }
+    for (let col = 0; col < BOARD_SIZE; col++) every.add(`${row},${col}`);
   }
+  const state = {
+    ...base,
+    turn: "ai",
+    playerBoard: { ...base.playerBoard, shotsReceived: every },
+  };
   assert.equal(randomChooseMove(state, "player"), null);
 });
 
