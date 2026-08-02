@@ -5,21 +5,19 @@
 // layer and must never break gameplay (see planning/battleship-prd.md §5).
 
 import { createChiptune } from "./chiptune.js";
+import { createScore } from "./score.js";
 
 const STORAGE_KEY = "battleship:muted";
 const TRACK_KEY = "battleship:track";
 
 // Three tracks:
-//   "march" — "Anchors Aweigh" (Charles A. Zimmermann, 1906), performed by the
-//             United States Navy Band. Both the composition and this recording
-//             are public domain (published pre-1931; the recording is a work of
-//             the US federal government). See assets/audio/README.md.
+//   "score" — the game's own score: a dark, slow minor progression with a
+//             sub-bass drone, heartbeat pulse and sonar pings. See score.js
+//             for why the three earlier attempts were wrong.
 //   "chip"  — NES-style 2A03 synthesis, see chiptune.js.
 //   "naval" — the original ambient sonar drone kept below.
-// The march is the default: it is the actual march of the US Navy, which beats
-// anything synthesized for a naval strategy game.
-const TRACKS = ["march", "chip", "naval"];
-const MARCH_SRC = "assets/audio/anchors-aweigh.mp3";
+// All three are synthesized; the project ships no audio files.
+const TRACKS = ["score", "chip", "naval"];
 
 // A minor-ish naval drone: root, fifth, minor third, octave (Hz).
 const PAD_VOICES = [98, 146.83, 174.61, 196];
@@ -37,9 +35,8 @@ let melodyStep = 0;
 let muted = false;
 let started = false;
 let chiptune = null;
-let marchEl = null;
-let marchSource = null;
-let track = "march";
+let score = null;
+let track = "score";
 
 function readStoredMute() {
   try {
@@ -52,9 +49,9 @@ function readStoredMute() {
 function readStoredTrack() {
   try {
     const stored = localStorage.getItem(TRACK_KEY);
-    return TRACKS.includes(stored) ? stored : "march";
+    return TRACKS.includes(stored) ? stored : "score";
   } catch {
-    return "march";
+    return "score";
   }
 }
 
@@ -144,46 +141,6 @@ function stepMelody() {
  * Starts the background music. Must be called from a user gesture (click /
  * keypress) or the browser's autoplay policy will keep the context suspended.
  */
-/**
- * Plays the march from an <audio> element rather than decoding it into a
- * buffer: it is a ~2MB file and buffering the whole thing would delay the
- * first note. Routing it through musicGain (instead of just setting
- * element.volume) keeps it under the same mute control as everything else.
- */
-function startMarch() {
-  if (!marchEl) {
-    marchEl = new Audio(MARCH_SRC);
-    marchEl.loop = true;
-    marchEl.preload = "auto";
-    marchEl.crossOrigin = "anonymous";
-  }
-  if (!marchSource) {
-    try {
-      marchSource = ctx.createMediaElementSource(marchEl);
-      marchSource.connect(musicGain);
-    } catch {
-      // Some browsers refuse a second MediaElementSource for one element.
-      // Fall back to the element's own volume so music still plays.
-      marchSource = null;
-      marchEl.volume = 0.55;
-    }
-  }
-  const play = marchEl.play();
-  if (play && typeof play.catch === "function") {
-    // Autoplay refusal is expected until a user gesture; startMusic() is
-    // called again from click handlers, so this is not an error state.
-    play.catch(() => {});
-  }
-}
-
-function stopMarch() {
-  try {
-    if (marchEl) marchEl.pause();
-  } catch {
-    /* element already gone */
-  }
-}
-
 export function startMusic() {
   try {
     if (!ensureContext()) return;
@@ -191,15 +148,16 @@ export function startMusic() {
     if (started) return;
     started = true;
     // musicGain's 0.14 was tuned for the ambient drone, which is a continuous
-    // bed sitting under everything. A march and a chiptune are foreground
+    // bed sitting under everything. The score and the chiptune are foreground
     // music and need considerably more level.
     try {
-      musicGain.gain.value = track === "naval" ? 0.14 : 0.55;
+      musicGain.gain.value = track === "naval" ? 0.14 : 0.45;
     } catch {
       /* gain node gone; the track will still play at whatever level it has */
     }
-    if (track === "march") {
-      startMarch();
+    if (track === "score") {
+      if (!score) score = createScore(ctx, musicGain);
+      score.start();
     } else if (track === "chip") {
       if (!chiptune) chiptune = createChiptune(ctx, musicGain);
       chiptune.start();
@@ -217,7 +175,7 @@ export function stopMusic() {
   try {
     if (melodyTimer) clearInterval(melodyTimer);
     if (chiptune) chiptune.stop();
-    stopMarch();
+    if (score) score.stop();
   } catch {
     /* nothing to clean up */
   }
