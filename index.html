@@ -29,6 +29,61 @@
 
       <p id="status-line" class="status-line">Deploy your fleet to begin.</p>
 
+      <!-- ===================================================================
+           TITLE SCREEN (attract mode). Shell is static so it exists even if
+           src/title.js never runs; that module fills in the measured numbers
+           from src/baseline.js and wires the three entry points. Styles live
+           in the "TITLE SCREEN" block of src/style.css. Fixed-position, so it
+           cannot contribute to page scroll height.
+      =================================================================== -->
+      <section id="title-screen" class="title-screen" hidden aria-label="Battleship — title screen">
+        <div class="title-radar" aria-hidden="true">
+          <div class="title-radar-grid"></div>
+          <div class="title-radar-rings"></div>
+          <div class="title-radar-sweep"></div>
+          <span class="title-blip" style="--bx: 31%; --by: 34%; --bd: 0s"></span>
+          <span class="title-blip" style="--bx: 66%; --by: 27%; --bd: 1.9s"></span>
+          <span class="title-blip" style="--bx: 74%; --by: 63%; --bd: 3.4s"></span>
+          <span class="title-blip" style="--bx: 24%; --by: 68%; --bd: 5.1s"></span>
+          <span class="title-blip" style="--bx: 52%; --by: 79%; --bd: 6.6s"></span>
+        </div>
+
+        <p class="title-corner title-corner-tl" aria-hidden="true">Battlestation // Fire Control</p>
+        <p class="title-corner title-corner-tr" aria-hidden="true">Grid 10&times;10 · 5 hulls · Sector 7</p>
+
+        <div class="title-content">
+          <p class="title-eyebrow"><span class="title-eyebrow-dot"></span>Bayesian Search Theory engine · online</p>
+          <h1 class="title-wordmark"><span>Battle</span><span class="title-wordmark-2">ship</span></h1>
+          <p class="title-tagline">Luck runs out. Probability doesn&rsquo;t.</p>
+          <p id="title-hook" class="title-hook"></p>
+
+          <ul id="title-stats" class="title-stats"></ul>
+          <p id="title-stats-note" class="title-stats-note"></p>
+
+          <div class="title-actions">
+            <button id="title-start" class="title-cta" type="button">
+              <span>Deploy Your Fleet</span>
+              <em aria-hidden="true">&rarr;</em>
+            </button>
+            <div class="title-secondary">
+              <button id="title-exhibition" class="title-ghost" type="button">
+                <span class="title-ghost-dot" aria-hidden="true"></span>Watch AI vs AI
+              </button>
+              <button id="title-arena" class="title-ghost" type="button">
+                <span class="title-ghost-dot" aria-hidden="true"></span>Strategy Arena
+              </button>
+            </div>
+          </div>
+
+          <ul id="title-fleet" class="title-fleet" aria-hidden="true"></ul>
+        </div>
+
+        <p class="title-foot">
+          Press <span class="key-hint">Enter</span> to deploy · single player · no install
+        </p>
+      </section>
+      <!-- ================= end TITLE SCREEN ================= -->
+
       <section id="placement-screen" class="placement" hidden>
         <div class="placement-head">
           <h2>Strategy Panel</h2>
@@ -140,6 +195,13 @@
          and empty until mounted, so it cannot affect the battle view's
          layout. -->
     <div id="exhibition-root"></div>
+
+    <!-- A second, launcher-less Strategy Arena instance for the title screen.
+         The in-placement copy lives inside #placement-screen, which is
+         display:none while the title is up, so its overlay cannot be shown
+         from there. This mount point is always displayed; CSS hides only its
+         launch button and #title-arena clicks it. -->
+    <div id="title-arena-root"></div>
 
     <script type="module" src="src/ui.js"></script>
   </body>

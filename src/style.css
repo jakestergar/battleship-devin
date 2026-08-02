@@ -1159,3 +1159,519 @@ body {
     transition: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   TITLE SCREEN (attract mode)
+   Markup: the `#title-screen` block in index.html. Wiring: src/title.js.
+
+   Deliberately `position: fixed` and full-viewport: it composes against the
+   whole screen like the front of a game, and — just as important — a fixed
+   layer contributes nothing to `documentElement.scrollHeight`, so the
+   zero-scroll guarantee holds at every viewport by construction. Everything
+   inside is sized in vh-aware clamps so it still fits at 1280x620.
+
+   Colour discipline: phosphor = live/active, brass = structure. No klaxon
+   anywhere on this screen — it stays reserved for damage.
+--------------------------------------------------------------------------- */
+
+/* The title screen's own Strategy Arena instance is launcher-less: only its
+   overlay is used, driven by the #title-arena button. */
+#title-arena-root .arena-launch {
+  display: none;
+}
+
+/* While the title is up, the in-game chrome behind it is noise. */
+body.phase-title .masthead,
+body.phase-title .status-line,
+body.phase-title #exhibition-root .exh-launch {
+  display: none;
+}
+
+.title-screen[hidden] {
+  display: none;
+}
+
+.title-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: clamp(16px, 4vh, 40px) 24px;
+  background:
+    radial-gradient(ellipse at 50% 42%, rgba(58, 219, 118, 0.1), transparent 62%),
+    radial-gradient(ellipse at 50% 118%, rgba(201, 154, 62, 0.1), transparent 60%),
+    var(--abyss);
+  animation: title-in 520ms ease both;
+}
+
+@keyframes title-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ---- Background: a slow sonar sweep over a faint grid --------------------
+   Pure CSS, one rotating element plus two static gradients. Never intercepts
+   a click. */
+
+.title-radar {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: min(165vh, 1500px);
+  height: min(165vh, 1500px);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  opacity: 0.78;
+  /* closest-side, not the default farthest-corner: with farthest-corner the
+     fade never completes inside the box and the sweep clips as a hard
+     rectangle at the viewport edge. */
+  mask-image: radial-gradient(closest-side, #000 0%, #000 56%, transparent 88%);
+  -webkit-mask-image: radial-gradient(closest-side, #000 0%, #000 56%, transparent 88%);
+}
+
+.title-radar-grid,
+.title-radar-rings,
+.title-radar-sweep {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+
+.title-radar-grid {
+  background-image:
+    repeating-linear-gradient(0deg, rgba(58, 219, 118, 0.09) 0 1px, transparent 1px 44px),
+    repeating-linear-gradient(90deg, rgba(58, 219, 118, 0.09) 0 1px, transparent 1px 44px);
+}
+
+.title-radar-rings {
+  background-image:
+    repeating-radial-gradient(
+      circle,
+      rgba(58, 219, 118, 0.17) 0 1px,
+      transparent 1px 10.5%
+    );
+  border: 1px solid rgba(58, 219, 118, 0.14);
+}
+
+/* The sweep itself: a single conic wedge, rotated. One compositor-friendly
+   transform animation — no repaint, no JS, no canvas. */
+.title-radar-sweep {
+  background: conic-gradient(
+    from 0deg,
+    rgba(58, 219, 118, 0.26) 0deg,
+    rgba(58, 219, 118, 0.09) 18deg,
+    rgba(58, 219, 118, 0.025) 44deg,
+    transparent 66deg,
+    transparent 360deg
+  );
+  animation: title-sweep 7.5s linear infinite;
+}
+
+/* The leading edge of the sweep, so it reads as a beam and not just a haze. */
+.title-radar-sweep::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 1px;
+  height: 50%;
+  background: linear-gradient(to bottom, rgba(58, 219, 118, 0) 0%, rgba(58, 219, 118, 0.75) 100%);
+}
+
+@keyframes title-sweep {
+  to { transform: rotate(360deg); }
+}
+
+/* Contacts that flare as the sweep passes, then decay. */
+.title-blip {
+  position: absolute;
+  left: var(--bx);
+  top: var(--by);
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: var(--phosphor);
+  box-shadow: 0 0 10px var(--phosphor);
+  opacity: 0;
+  animation: title-blip 7.5s linear infinite;
+  animation-delay: var(--bd);
+}
+
+@keyframes title-blip {
+  0% { opacity: 0.9; transform: scale(1.4); }
+  14% { opacity: 0.55; transform: scale(1); }
+  70% { opacity: 0.06; }
+  100% { opacity: 0; }
+}
+
+/* ---- Corner HUD ---------------------------------------------------------- */
+
+.title-corner {
+  position: absolute;
+  top: clamp(12px, 2.4vh, 22px);
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--brass-dim);
+}
+
+.title-corner-tl {
+  left: clamp(16px, 3vw, 40px);
+  padding-left: 12px;
+  border-left: 2px solid var(--brass-dim);
+}
+
+.title-corner-tr {
+  right: clamp(16px, 3vw, 40px);
+  padding-right: 12px;
+  border-right: 2px solid var(--brass-dim);
+  text-align: right;
+}
+
+/* ---- Content ------------------------------------------------------------- */
+
+.title-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  max-width: 860px;
+}
+
+.title-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 clamp(6px, 1.4vh, 14px);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--phosphor);
+}
+
+.title-eyebrow-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--phosphor);
+  box-shadow: 0 0 8px var(--phosphor);
+  animation: title-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes title-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+.title-wordmark {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: clamp(64px, 16.5vh, 168px);
+  line-height: 0.8;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--fog);
+  text-shadow: 0 0 44px rgba(58, 219, 118, 0.22);
+}
+
+.title-wordmark-2 {
+  color: var(--brass);
+}
+
+.title-tagline {
+  margin: clamp(10px, 2vh, 20px) 0 0;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: clamp(19px, 3vh, 30px);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--fog);
+}
+
+/* Hairlines either side of the tagline, drawn with pseudo-elements on the
+   container so they scale with the text block. */
+.title-tagline::before,
+.title-tagline::after {
+  content: "";
+  display: block;
+  width: min(320px, 40vw);
+  height: 1px;
+  margin: 0 auto;
+  background: linear-gradient(90deg, transparent, var(--brass-dim), transparent);
+}
+
+.title-tagline::before {
+  margin-bottom: clamp(8px, 1.6vh, 16px);
+}
+
+.title-tagline::after {
+  margin-top: clamp(8px, 1.6vh, 16px);
+}
+
+.title-hook {
+  margin: clamp(6px, 1.2vh, 12px) 0 0;
+  max-width: 600px;
+  font-size: clamp(13px, 1.7vh, 15px);
+  line-height: 1.55;
+  color: var(--fog-dim);
+}
+
+/* ---- Measured-numbers strip ---------------------------------------------- */
+
+.title-stats {
+  display: flex;
+  gap: clamp(10px, 1.6vw, 22px);
+  margin: clamp(12px, 2.4vh, 26px) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.title-stat {
+  min-width: 148px;
+  padding: clamp(7px, 1.2vh, 12px) 16px;
+  border: 1px solid rgba(220, 230, 235, 0.1);
+  border-top: 1px solid var(--brass-dim);
+  background: rgba(22, 40, 59, 0.55);
+  text-align: left;
+}
+
+.title-stat-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--fog-dim);
+}
+
+.title-stat-figure {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 4px;
+  color: var(--fog);
+}
+
+/* Mono, not the stencil display face: stencil cuts through digits, and
+   "44.9" is the single most important string on this screen. */
+.title-stat-figure strong {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: clamp(22px, 3.4vh, 32px);
+  line-height: 1;
+  letter-spacing: 0.01em;
+}
+
+.title-stat-figure em {
+  font-family: var(--font-mono);
+  font-style: normal;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fog-dim);
+}
+
+/* The AI's own number is the live one; the gain is the structural claim. */
+.title-stat-ai .title-stat-figure strong {
+  color: var(--phosphor);
+}
+
+.title-stat-ai {
+  border-top-color: var(--phosphor);
+}
+
+.title-stat-gain .title-stat-figure strong {
+  color: var(--brass);
+}
+
+.title-stats-note {
+  margin: clamp(8px, 1.4vh, 14px) 0 0;
+  max-width: 620px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+  color: var(--fog-dim);
+}
+
+/* ---- The convoy you're about to deploy ------------------------------------ */
+
+.title-fleet {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(12px, 1.6vw, 26px);
+  margin: clamp(16px, 3vh, 34px) 0 0;
+  padding: 0;
+  list-style: none;
+  opacity: 0.55;
+}
+
+.title-fleet svg {
+  display: block;
+  height: clamp(11px, 2vh, 19px);
+  width: auto;
+}
+
+/* ---- Calls to action ------------------------------------------------------ */
+
+.title-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(10px, 1.8vh, 18px);
+  margin-top: clamp(16px, 3vh, 32px);
+}
+
+.title-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  padding: clamp(12px, 1.9vh, 17px) clamp(28px, 3.4vw, 46px);
+  font-family: var(--font-mono);
+  font-size: clamp(13px, 1.7vh, 15px);
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--abyss);
+  background: var(--phosphor);
+  border: 1px solid var(--phosphor);
+  border-radius: 2px;
+  cursor: pointer;
+  box-shadow: 0 0 0 rgba(58, 219, 118, 0.5);
+  animation: title-cta-breathe 3.2s ease-in-out infinite;
+  transition: transform 140ms ease, background 140ms ease;
+}
+
+.title-cta em {
+  font-style: normal;
+  transition: transform 140ms ease;
+}
+
+.title-cta:hover {
+  transform: translateY(-1px);
+}
+
+.title-cta:hover em {
+  transform: translateX(4px);
+}
+
+.title-cta:focus-visible {
+  outline: 2px solid var(--fog);
+  outline-offset: 3px;
+}
+
+@keyframes title-cta-breathe {
+  0%, 100% { box-shadow: 0 0 0 rgba(58, 219, 118, 0); }
+  50% { box-shadow: 0 0 28px rgba(58, 219, 118, 0.42); }
+}
+
+.title-secondary {
+  display: flex;
+  gap: 12px;
+}
+
+.title-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 18px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--brass);
+  background: transparent;
+  border: 1px solid var(--brass-dim);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.title-ghost:hover {
+  color: var(--phosphor);
+  border-color: var(--phosphor);
+  background: rgba(58, 219, 118, 0.07);
+}
+
+.title-ghost:focus-visible {
+  outline: 2px solid var(--fog);
+  outline-offset: 3px;
+}
+
+.title-ghost-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 7px currentColor;
+}
+
+.title-foot {
+  position: absolute;
+  bottom: clamp(10px, 2.2vh, 22px);
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--fog-dim);
+}
+
+.title-foot .key-hint {
+  color: var(--phosphor);
+  border-color: var(--phosphor);
+}
+
+/* Short viewports: the corner HUD and the footnote are the first things that
+   can go, then the stat strip tightens. */
+@media (max-height: 660px) {
+  .title-corner,
+  .title-stats-note,
+  .title-fleet {
+    display: none;
+  }
+
+  .title-stat {
+    min-width: 132px;
+  }
+}
+
+@media (max-width: 720px) {
+  .title-stats {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .title-corner {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .title-screen,
+  .title-radar-sweep,
+  .title-blip,
+  .title-eyebrow-dot,
+  .title-cta {
+    animation: none;
+  }
+
+  /* Keep the sweep as a static wedge so the composition still reads. */
+  .title-blip {
+    opacity: 0.5;
+  }
+}
