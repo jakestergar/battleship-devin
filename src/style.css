@@ -1102,3 +1102,60 @@ body {
     font-size: 20px;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Who Is Winning
+   Distinct from the confidence meter: that one is about a single shot, this is
+   about the game. Phosphor is the player's share, klaxon the AI's — klaxon is
+   reserved for threat, and the AI winning is exactly that.
+--------------------------------------------------------------------------- */
+
+.odds-bar {
+  position: relative;
+  height: 10px;
+  border: 1px solid rgba(220, 230, 235, 0.14);
+  background: var(--klaxon);
+  overflow: hidden;
+}
+
+.odds-fill {
+  height: 100%;
+  width: 50%;
+  background: var(--phosphor);
+  transition: width 320ms ease-out;
+}
+
+.odds-split {
+  display: flex;
+  justify-content: space-between;
+  margin: 6px 0 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.odds-you {
+  color: var(--phosphor);
+}
+
+.odds-them {
+  color: var(--klaxon);
+}
+
+.odds-note {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--fog-dim);
+}
+
+.metric-small {
+  margin: 8px 0 0;
+  font-size: 14px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .odds-fill {
+    transition: none;
+  }
+}

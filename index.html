@@ -105,8 +105,18 @@
           <div id="fairness-panel" class="console-block"></div>
 
           <div class="console-block">
-            <h3>Shots Fired</h3>
-            <p id="shot-count" class="metric">You 0 · AI 0</p>
+            <h3>Who Is Winning</h3>
+            <div class="odds-bar" role="img" aria-label="Estimated win probability">
+              <div id="odds-fill" class="odds-fill"></div>
+            </div>
+            <p class="odds-split">
+              <span id="odds-player" class="odds-you">50%</span>
+              <span id="odds-ai" class="odds-them">50%</span>
+            </p>
+            <p id="odds-note" class="odds-note">
+              Estimated by simulating the rest of the game 3,000 times.
+            </p>
+            <p id="shot-count" class="metric metric-small">You 0 · AI 0</p>
           </div>
         </aside>
       </main>

@@ -15,6 +15,7 @@ import { chooseMove as realChooseMove } from "./ai.js";
 import { mountCoach } from "./coach-ui.js";
 import { shipSvg } from "./ships.js";
 import { mountSinkCallout } from "./sink.js";
+import { estimateWinProbability, describeOdds } from "./odds.js";
 import { mountFairness } from "./fairness-ui.js";
 import { mountExhibition } from "./exhibition.js";
 import { mountArena } from "./arena.js";
@@ -147,6 +148,10 @@ function cacheElements() {
   els.confidenceValue = document.getElementById("confidence-value");
   els.explainPanel = document.getElementById("explain-panel");
   els.shotCount = document.getElementById("shot-count");
+  els.oddsFill = document.getElementById("odds-fill");
+  els.oddsPlayer = document.getElementById("odds-player");
+  els.oddsAi = document.getElementById("odds-ai");
+  els.oddsNote = document.getElementById("odds-note");
   els.yourFleet = document.getElementById("your-fleet");
   els.enemyFleet = document.getElementById("enemy-fleet");
   els.endScreen = document.getElementById("end-screen");
@@ -456,6 +461,30 @@ function renderShotCount() {
   els.shotCount.textContent = `You ${player} · AI ${ai}`;
 }
 
+/**
+ * Win probability, distinct from the AI confidence meter: confidence is about
+ * a single shot, this is about the whole game. Additive layer — if the
+ * estimate fails, the panel falls back to an em dash rather than throwing.
+ */
+function renderOdds() {
+  try {
+    const odds = estimateWinProbability(state);
+    if (!odds) {
+      els.oddsFill.style.width = "50%";
+      els.oddsPlayer.textContent = "—";
+      els.oddsAi.textContent = "—";
+      return;
+    }
+    const pct = Math.round(odds.player * 100);
+    els.oddsFill.style.width = `${pct}%`;
+    els.oddsPlayer.textContent = `You ${pct}%`;
+    els.oddsAi.textContent = `AI ${100 - pct}%`;
+    els.oddsNote.textContent = describeOdds(odds);
+  } catch {
+    /* decorative — the rosters already show the material position */
+  }
+}
+
 function describeResult(entry) {
   if (!entry) return "";
   const who = entry.actor === "player" ? "You" : "The AI";
@@ -541,6 +570,7 @@ function render() {
   renderConfidence();
   renderExplain();
   renderShotCount();
+  renderOdds();
   renderStatusLine();
   announceNewSinks();
   renderEndScreen();
