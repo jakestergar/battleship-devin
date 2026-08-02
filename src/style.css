@@ -940,4 +940,65 @@ body {
   .sink-card {
     transition: none;
   }
+/* ---- Verify Fairness console block (src/fairness-ui.js) ---- */
+
+#fairness-panel .button {
+  /* .button's default 22px top margin is sized for the end-card; the console
+     block is tight, so pull it in and shrink the hit area to match. */
+  margin: 0 0 10px;
+  padding: 7px 12px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+
+/* The battle view fits 1440x700 with zero scrolling; this block has to earn
+   its place in that budget, so its copy runs a size down from .explain. */
+#fairness-panel .explain {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.fairness-verdict {
+  margin: 0 0 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--fog-dim);
+}
+
+.fairness-verdict.is-pass {
+  color: var(--phosphor);
+}
+
+/* Klaxon stays reserved for hit/sunk (see src/tokens.css) — a failed check
+   is an alarm about the AI itself, so it gets brass emphasis, not red. */
+.fairness-verdict.is-fail {
+  color: var(--brass);
+  text-decoration: underline;
+}
+
+.fairness-hash-list {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fog-dim);
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  line-height: 1.4;
+}
+
+.fairness-hash-ref {
+  color: var(--fog);
+  border-bottom: 1px solid var(--brass-dim);
+}
+
+.fairness-hash-ok {
+  color: var(--phosphor-dim);
+}
+
+.fairness-hash-bad {
+  color: var(--brass);
 }

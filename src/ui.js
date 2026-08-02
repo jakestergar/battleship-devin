@@ -14,6 +14,7 @@ import {
 import { chooseMove as realChooseMove } from "./ai.js";
 import { shipSvg } from "./ships.js";
 import { mountSinkCallout } from "./sink.js";
+import { mountFairness } from "./fairness-ui.js";
 import {
   initAudio,
   isMuted,
@@ -1046,6 +1047,7 @@ function init() {
   frameBoard(els.playerBoard.parentElement);
   frameBoard(els.placementBoard.parentElement);
   setUpReticle();
+  mountFairness(document.getElementById("fairness-panel"), () => state);
   initAudio();
   renderMuteButton();
 
