@@ -17,6 +17,7 @@ import { shipSvg } from "./ships.js";
 import { mountSinkCallout } from "./sink.js";
 import { mountFairness } from "./fairness-ui.js";
 import { mountExhibition } from "./exhibition.js";
+import { mountArena } from "./arena.js";
 import {
   initAudio,
   isMuted,
@@ -1051,6 +1052,7 @@ function init() {
   frameBoard(els.placementBoard.parentElement);
   setUpReticle();
   mountFairness(document.getElementById("fairness-panel"), () => state);
+  mountArena(document.getElementById("strategy-arena"));
   initAudio();
   renderMuteButton();
 
