@@ -580,12 +580,21 @@ body {
   letter-spacing: 0.04em;
 }
 
+/* min-width: 0 is load-bearing. A flex item defaults to min-width: auto,
+   which refuses to shrink below its content — so in a narrow column the row
+   overflowed the panel and clipped "4/4" and "AFLOAT" rather than
+   compressing. The hull strip and status keep their size; the name yields. */
 .roster-name {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--fog);
 }
 
 .roster-status {
+  flex: 0 0 auto;
   min-width: 46px;
   text-align: right;
   font-size: 11px;
@@ -1074,10 +1083,10 @@ body {
    the console gained a row, and a 700px laptop viewport was getting small
    board cells but still roomy panels — the worst of both. */
 @media (max-height: 900px) {
-  /* Three narrower columns instead of two: with six blocks that turns three
-     rows into two, which is what actually buys back the height. */
+  /* Stay at two columns. Three strands a panel in a dead row beside the
+     full-width odds block, and squeezes the rosters until they clip. Height
+     is recovered from padding and prose instead. */
   .console {
-    grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
     gap: 10px;
   }
 
@@ -1956,6 +1965,15 @@ body.phase-title #exhibition-root .exh-launch {
 @media (max-height: 660px) {
   :root {
     --cell: 26px;
+  }
+
+  /* Only here, allow a third column. Two columns leaves ADVANCED at four rows
+     (rosters / confidence + fairness / ordnance alone / odds), and the extra
+     row does not fit. Three columns packs ordnance alongside fairness. This is
+     only safe now that .roster-name can shrink — at 158px columns it used to
+     clip. */
+  .console {
+    grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
   }
 
   .console-block {
