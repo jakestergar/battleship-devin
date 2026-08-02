@@ -463,3 +463,65 @@ sunk on their own, as the fallback.
   `06-exhibition-brief.md`, `07-coach-brief.md` written and ready to
   dispatch. Sessions 5-7 can run in parallel with each other and with the
   still-unstarted harness (Session 4).
+
+### 19. Provable fairness: shuffle the player's unsunk fleet live, in the browser
+- **Context:** `tests/ai.test.js` already proved the AI ignores unsunk ship
+  positions, but that proof was invisible to a player. Session 5 turned it
+  into a control in the battle console (`src/fairness.js` for the logic,
+  `src/fairness-ui.js` for the rendering, one import + one call site in
+  `src/ui.js`, one `#fairness-panel` container in `index.html`).
+- **How shuffles are constrained to stay consistent with public knowledge.**
+  The public record is derived exactly the way `src/ai.js` derives it — from
+  the AI's own shot history plus the cells of ships whose sinking was
+  announced. A relocation is accepted only if, for every unsunk ship:
+  in bounds and non-overlapping (via `engine.enumerateLegalPlacements`, not
+  new placement logic); never on a cell reported as a miss; never on a sunk
+  ship's cells (those ships do not move at all); never *fully* covered by
+  outstanding hits, since such a ship would already have been announced
+  sunk; and strictly different from its real position, so every trial is a
+  genuine relocation. On the completed layout, every unresolved hit cell
+  must still be covered by some ship — otherwise the alternative board would
+  contradict a "hit" the player already reported. `shotsReceived` and
+  `history` are carried across untouched; each moved ship's `hits` set is
+  recomputed from its new cells so the alternative state is internally
+  consistent rather than merely plausible. The search is randomised
+  backtracking, largest ship first, trying hit-covering placements before
+  free-water ones (outstanding hits are the scarce constraint).
+- **Measured result.** Across 10 full self-played games, 404 checks: 389
+  returned 5/5 identical hashes, 15 declined with `trials: 0` (all but one
+  in the endgame, where the board is nearly saturated). Zero mismatches.
+  Worst-case single check 403 ms. In the browser at 1440x700 a live
+  mid-game check reported `PASS — moved your unsunk ships 5 times, the AI's
+  targeting map never changed (1c1e65af)`.
+- **Honest assessment — what this check does *not* prove:**
+  - **`history` is held byte-for-byte fixed, including `shipId` on
+    unresolved-hit entries.** That field names a ship the AI has not sunk,
+    so it is not truly public, and after a shuffle it may name a ship that
+    no longer sits on that cell. A cheating AI that read
+    `history[i].shipId` for unsunk ships would therefore *not* be caught.
+    Holding history fixed was the brief's explicit constraint and keeps the
+    check easy to explain; remapping those ids per shuffle would close the
+    hole and is the obvious next improvement.
+  - **Five trials is evidence, not a proof.** A cheat that only fires on
+    rare configurations could survive five samples. The check is a
+    falsification attempt, not a verification.
+  - **FNV-1a 32-bit is not collision-resistant.** It is a display
+    convenience — the grids being compared are computed locally moments
+    apart, so an adversarial collision is not a realistic threat here, but
+    hash equality alone is not a cryptographic guarantee.
+  - **The search is heuristic and time-capped** (3,000 nodes per attempt,
+    400 ms total). It can fail to find a relocation that exists, and
+    ~4% of positions report `trials: 0`. That is reported as "NOT
+    VERIFIABLE", never as a pass — the one thing a fairness checker must
+    never do is fabricate a green light.
+  - **It runs synchronously on the main thread.** Deferred a frame so the
+    "Recomputing…" line paints first, and hard-capped at 400 ms, but a slow
+    machine can still see a short jank. A worker would be cleaner and was
+    rejected as out of scope for a no-build-step repo.
+- **Layout note:** the battle console is a `repeat(auto-fit, minmax(210px,
+  1fr))` grid that fits 1440x700 with zero scrolling. The panel was measured
+  in headless Chrome and trimmed (12px copy, inline hash strip instead of a
+  six-row list, no disclosure toggle) until the page height stayed at
+  exactly 700px with results shown — 189px tall against roughly 209px of
+  available slack. Klaxon is deliberately not used for a FAIL verdict; per
+  `src/tokens.css` it stays reserved for hit/sunk, so failure reads in brass.
