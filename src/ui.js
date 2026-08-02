@@ -444,7 +444,7 @@ function renderExplain() {
   if (!explainOpen) {
     els.explainPanel.classList.remove("explain-active");
     els.explainPanel.textContent =
-      "Click the AI's most recent shot marker on your fleet to see why it fired there.";
+      "Click the AI's most recent shot marker on the good guys to see why it fired there.";
     return;
   }
   els.explainPanel.classList.add("explain-active");
@@ -509,13 +509,13 @@ function renderStatusLine() {
   }
   if (isGameOver(state)) {
     els.statusLine.textContent =
-      state.status === "player_won" ? "Enemy fleet destroyed." : "Your fleet is lost.";
+      state.status === "player_won" ? "Bad guys destroyed." : "The good guys are lost.";
     return;
   }
   const last = state.history[state.history.length - 1];
   els.statusLine.textContent = last
     ? `${describeResult(last)} Your move.`
-    : "Your move — fire on the enemy waters.";
+    : "Your move — fire on the bad guys.";
 }
 
 function renderEndScreen() {
@@ -528,8 +528,8 @@ function renderEndScreen() {
   els.endTitle.textContent = won ? "Victory" : "Defeat";
   const shots = state.history.filter((e) => e.actor === (won ? "player" : "ai")).length;
   els.endSummary.textContent = won
-    ? `You sank the enemy fleet in ${shots} shots.`
-    : `The AI sank your fleet in ${shots} shots.`;
+    ? `You sank the bad guys in ${shots} shots.`
+    : `The AI sank the good guys in ${shots} shots.`;
   els.endScreen.hidden = false;
 }
 
@@ -665,8 +665,8 @@ function sleep(ms) {
 /**
  * The cell a player's shot flies from: the un-sunk hull segment closest to
  * the gap between the two boards, so a shot visibly leaves a real ship
- * rather than an abstract launcher. Enemy Waters sits to the left of Your
- * Fleet, so "closest to the gap" is the lowest column.
+ * rather than an abstract launcher. The Bad Guys board sits to the left of the
+ * Good Guys board, so "closest to the gap" is the lowest column.
  */
 function playerLaunchCell() {
   let best = null;
@@ -682,7 +682,7 @@ function playerLaunchCell() {
 /**
  * Where the AI's shot flies from. The enemy's real ship positions are
  * hidden, so this deliberately uses the enemy board's edge on the same row
- * as the target — it leaks nothing about the enemy fleet's layout.
+ * as the target — it leaks nothing about the bad guys' layout.
  */
 function enemyLaunchCellEl(target) {
   return cellElAt(els.aiBoard, target.row, BOARD_SIZE - 1);
