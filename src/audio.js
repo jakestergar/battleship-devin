@@ -34,6 +34,7 @@ let melodyTimer = null;
 let melodyStep = 0;
 let muted = false;
 let started = false;
+let sfx = null;
 let chiptune = null;
 let score = null;
 let track = "score";
@@ -88,12 +89,52 @@ function ensureContext() {
   // distorting, and every effect does not have to be hand-balanced against
   // every other one.
   const limiter = ctx.createDynamicsCompressor();
-  limiter.threshold.value = -6;
-  limiter.knee.value = 4;
-  limiter.ratio.value = 12;
-  limiter.attack.value = 0.002;
-  limiter.release.value = 0.18;
+  // Gentler than the first attempt. At -6dB/12:1 with a 2ms attack it was
+  // catching the transients so hard that everything read as flat and hollow —
+  // the limiter was removing exactly the punch the layering existed to create.
+  // A higher threshold, lower ratio and slower attack let the initial crack
+  // through and only tame what follows.
+  limiter.threshold.value = -2;
+  limiter.knee.value = 6;
+  limiter.ratio.value = 5;
+  limiter.attack.value = 0.006;
+  limiter.release.value = 0.25;
   master.connect(limiter).connect(ctx.destination);
+
+  // Effects bus with a reverb send.
+  //
+  // Dry synthesis in a vacuum sounds small no matter how well the layers are
+  // built: there is no room for the sound to happen in, so a cannon reads as a
+  // click with a tail rather than as a cannon on open water. The convolver
+  // runs a generated impulse — exponentially decaying noise — which is enough
+  // to imply space without shipping an impulse-response file.
+  sfx = ctx.createGain();
+  sfx.gain.value = 1;
+  sfx.connect(master);
+
+  const convolver = ctx.createConvolver();
+  const irSeconds = 1.9;
+  const irFrames = Math.floor(ctx.sampleRate * irSeconds);
+  const ir = ctx.createBuffer(2, irFrames, ctx.sampleRate);
+  for (let channel = 0; channel < 2; channel++) {
+    const data = ir.getChannelData(channel);
+    for (let i = 0; i < irFrames; i++) {
+      const t = i / irFrames;
+      // A short pre-delay of near-silence, then a dense exponential tail.
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, 2.6);
+    }
+  }
+  convolver.buffer = ir;
+
+  // Roll the top off the tail so the reverb sits behind the dry sound rather
+  // than adding hiss on top of it.
+  const wetTone = ctx.createBiquadFilter();
+  wetTone.type = "lowpass";
+  wetTone.frequency.value = 2600;
+
+  const wet = ctx.createGain();
+  wet.gain.value = 0.34;
+  sfx.connect(convolver).connect(wetTone).connect(wet).connect(master);
   musicGain = ctx.createGain();
   musicGain.gain.value = 0.14;
   musicGain.connect(master);
@@ -264,7 +305,7 @@ function playNoise({
   gain.gain.setValueAtTime(0, at);
   gain.gain.linearRampToValueAtTime(peak, at + attack);
   gain.gain.exponentialRampToValueAtTime(0.0001, at + duration);
-  source.connect(biquad).connect(gain).connect(master);
+  source.connect(biquad).connect(gain).connect(sfx || master);
   source.start(at);
 }
 
@@ -299,11 +340,35 @@ function playWhistle({ from = 2100, to = 620, duration = 0.5, peak = 0.1, delay 
   gain.gain.setValueAtTime(peak, at + duration * 0.6);
   gain.gain.exponentialRampToValueAtTime(0.0001, at + duration);
 
-  osc.connect(band).connect(gain).connect(master);
+  osc.connect(band).connect(gain).connect(sfx || master);
   osc.start(at);
   vibrato.start(at);
   osc.stop(at + duration + 0.05);
   vibrato.stop(at + duration + 0.05);
+}
+
+/**
+ * A pitched layer: the body of a cannon, the sub of an explosion, a fanfare
+ * note. `curve` chooses how the pitch falls — "exp" for a natural impact
+ * thump, "lin" when a steadier fall reads better.
+ */
+function playTone({ type, from, to, duration, peak, delay = 0, curve = "exp" }) {
+  const at = ctx.currentTime + delay;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(from, at);
+  if (curve === "lin") {
+    osc.frequency.linearRampToValueAtTime(to, at + duration);
+  } else {
+    osc.frequency.exponentialRampToValueAtTime(Math.max(to, 0.001), at + duration);
+  }
+  gain.gain.setValueAtTime(0, at);
+  gain.gain.linearRampToValueAtTime(peak, at + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.0001, at + duration);
+  osc.connect(gain).connect(sfx || master);
+  osc.start(at);
+  osc.stop(at + duration + 0.05);
 }
 
 const EFFECTS = {
@@ -314,16 +379,19 @@ const EFFECTS = {
   fire: () => {
     playNoise({ duration: 0.05, peak: 0.45, filter: "highpass", frequency: 2600, attack: 0.001 });
     playNoise({
-      duration: 0.34,
-      peak: 0.5,
+      duration: 0.62,
+      peak: 0.55,
       filter: "lowpass",
-      frequency: 900,
-      sweepTo: 90,
+      frequency: 1100,
+      sweepTo: 70,
       shape: "boom",
       attack: 0.004,
     });
-    playTone({ type: "sine", from: 130, to: 38, duration: 0.4, peak: 0.42 });
-    playWhistle({ from: 2000, to: 640, duration: 0.5, peak: 0.09, delay: 0.13 });
+    // Low-mid weight. Without something in the 200Hz region a cannon reads as
+    // a click plus a rumble, with a hole where the chest of it should be.
+    playTone({ type: "triangle", from: 260, to: 70, duration: 0.5, peak: 0.3 });
+    playTone({ type: "sine", from: 140, to: 34, duration: 0.8, peak: 0.55 });
+    playWhistle({ from: 2100, to: 560, duration: 0.6, peak: 0.26, delay: 0.16 });
   },
 
   // Splash: the plunk of displacement, then the burst of water, then spray.
@@ -351,15 +419,16 @@ const EFFECTS = {
   hit: () => {
     playNoise({ duration: 0.05, peak: 0.5, filter: "highpass", frequency: 3200, attack: 0.001 });
     playNoise({
-      duration: 0.85,
-      peak: 0.62,
+      duration: 1.25,
+      peak: 0.66,
       filter: "lowpass",
-      frequency: 1900,
-      sweepTo: 70,
+      frequency: 2100,
+      sweepTo: 55,
       shape: "boom",
       attack: 0.005,
     });
-    playTone({ type: "sine", from: 115, to: 28, duration: 0.75, peak: 0.5 });
+    playTone({ type: "triangle", from: 300, to: 60, duration: 0.6, peak: 0.32 });
+    playTone({ type: "sine", from: 120, to: 24, duration: 1.15, peak: 0.6 });
     for (let i = 0; i < 5; i++) {
       playNoise({
         duration: 0.05,

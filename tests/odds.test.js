@@ -79,9 +79,13 @@ test("odds move monotonically as the player lands more hits", () => {
 test("a dead-even opening slightly favours the player, who moves first", () => {
   // Regression: unresolved trials were scored as AI wins, so a symmetric
   // opening position read 45.7% for the player instead of just over 50%.
-  const odds = estimateWinProbability({ ...createGame(), turn: "player" }, { trials: 6000 });
+  // This is a Monte Carlo estimate, so the bound has to allow for sampling
+  // error. At 12,000 trials the standard error is ~0.005, so a window of
+  // roughly +/- 4 SE around "near even" is tight enough to catch the original
+  // bug (which read 0.457) without failing on noise.
+  const odds = estimateWinProbability({ ...createGame(), turn: "player" }, { trials: 12000 });
   assert.ok(
-    odds.player >= 0.49 && odds.player <= 0.58,
+    odds.player >= 0.475 && odds.player <= 0.58,
     `symmetric opening should be near even with a small first-mover edge, got ${odds.player}`
   );
 });
