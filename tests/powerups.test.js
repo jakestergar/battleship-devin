@@ -57,7 +57,9 @@ test("hits earn points and sinking earns strictly more", () => {
   );
 });
 
-test("misses pay nothing", () => {
+test("misses pay a small amount so the economy starts moving early", () => {
+  // Deliberate design change: paying only for hits made the first ability
+  // unaffordable until ~35 shots into a ~45 shot game. See src/powerups.js.
   const state = createGame();
   const occupied = new Set();
   for (const ship of state.aiBoard.ships) {
@@ -70,7 +72,37 @@ test("misses pay nothing", () => {
     }
   }
   const after = fireAt(state, "ai", empty).newState;
-  assert.equal(pointsEarned(after.history, "player"), 0);
+  const paid = pointsEarned(after.history, "player");
+  assert.ok(paid > 0, "a miss should still pay something");
+
+  // ...but a hit must always be worth strictly more than a miss.
+  const hitState = fireAt(state, "ai", state.aiBoard.ships[0].cells[0]).newState;
+  assert.ok(pointsEarned(hitState.history, "player") > paid);
+});
+
+test("the first ability is affordable within the first dozen turns", () => {
+  // The pacing requirement, asserted rather than assumed.
+  const cheapest = Math.min(POWERUPS.sonar.cost, POWERUPS.airstrike.cost);
+  let state = createGame();
+  let shots = 0;
+  const loadout = createLoadout();
+  // A pessimistic player: every shot a miss.
+  const occupied = new Set();
+  for (const ship of state.aiBoard.ships) {
+    for (const c of ship.cells) occupied.add(`${c.row},${c.col}`);
+  }
+  outer: for (let r = 0; r < BOARD_SIZE; r++) {
+    for (let c = 0; c < BOARD_SIZE; c++) {
+      if (occupied.has(`${r},${c}`)) continue;
+      state = fireAt({ ...state, turn: "player" }, "ai", { row: r, col: c }).newState;
+      shots++;
+      if (pointsAvailable(state.history, "player", loadout) >= cheapest) break outer;
+    }
+  }
+  assert.ok(
+    shots <= 12,
+    `even missing every shot, the cheapest ability should arrive within 12 turns, took ${shots}`
+  );
 });
 
 test("points are attributed to the actor who earned them", () => {

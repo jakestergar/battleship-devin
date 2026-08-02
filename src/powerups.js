@@ -29,21 +29,33 @@ import { fireAt } from "./engine.js";
 
 export const MODES = ["classic", "advanced"];
 
-/** Points awarded per outcome. Sinking pays a bonus on top of the hit. */
-const POINTS = { hit: 2, sunk: 5, miss: 0 };
+/**
+ * Points awarded per outcome.
+ *
+ * Misses pay too. The first version paid only for hits — 2 a hit, 5 more for a
+ * sink — and it made the whole economy inert: at a realistic hit rate you
+ * needed roughly 35 shots to afford anything in a game that lasts about 45.
+ * Measured, the mode shifted the win rate by +0.5 points, which is another way
+ * of saying the mechanic never actually came into play.
+ *
+ * Paying a small amount for every shot fixes the pacing: the first ability is
+ * reachable inside the first dozen turns, so the economy is something you use
+ * during the game rather than a reward for having already won it.
+ */
+const POINTS = { miss: 1, hit: 3, sunk: 9 };
 
 export const POWERUPS = {
   airstrike: {
     id: "airstrike",
     name: "Airstrike",
-    cost: 12,
+    cost: 18,
     shots: 5,
     description: "Fires on five random unhit cells at once.",
   },
   sonar: {
     id: "sonar",
     name: "Sonar Sweep",
-    cost: 8,
+    cost: 10,
     radius: 1,
     description: "Reveals which cells hold a ship in a 3x3 area.",
   },
@@ -60,9 +72,6 @@ export function pointsEarned(history, actor) {
   for (const entry of history) {
     if (entry.actor !== actor) continue;
     total += POINTS[entry.result] ?? 0;
-    // A sunk shot is also a hit; pay both so finishing a ship is worth more
-    // than merely damaging one.
-    if (entry.result === "sunk") total += POINTS.hit;
   }
   return total;
 }

@@ -511,10 +511,13 @@ function renderPowerups() {
     els.powerupSonar.disabled = !canScan;
     els.powerupSonar.classList.toggle("is-armed", sonarArmed);
 
+    // Show the shortfall rather than a dead button: "why can't I click this"
+    // was the first thing a player asked.
+    const cheapest = Math.min(POWERUPS.sonar.cost, POWERUPS.airstrike.cost);
     els.powerupHint.textContent = sonarArmed
       ? "Sonar armed — click a cell on the bad guys to scan around it."
-      : points < POWERUPS.sonar.cost
-        ? "Earn points by landing hits. Sinking pays a bonus."
+      : points < cheapest
+        ? `${cheapest - points} more pts for sonar. Every shot pays; hits pay more.`
         : "Spend points on ordnance, or keep firing.";
   } catch {
     /* additive layer — the turn loop must not care if this fails */
@@ -957,6 +960,12 @@ async function onPlayerShot(cell) {
   } finally {
     busy = false;
     els.aiBoard.classList.remove("board-locked");
+    // Re-render AFTER clearing `busy`. Without this the final paint of every
+    // turn happens while the turn is still flagged as in-flight, so anything
+    // that disables itself during a turn — the ordnance buttons — stays
+    // disabled until some unrelated render happens to run.
+    render();
+    renderSonar();
   }
 }
 
