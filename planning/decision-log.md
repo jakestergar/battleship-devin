@@ -463,3 +463,86 @@ sunk on their own, as the fallback.
   `06-exhibition-brief.md`, `07-coach-brief.md` written and ready to
   dispatch. Sessions 5-7 can run in parallel with each other and with the
   still-unstarted harness (Session 4).
+
+### 19. Playtest harness at scale, and an in-game Strategy Arena built from its output
+
+- **Harness (`scripts/harness.js`).** Built to Session 4's brief:
+  `simulateGame`, `randomChooseMove` (implemented in the harness, *not* as a
+  "dumb mode" in `src/ai.js`), `runBatch` with per-move invariant checking,
+  and a CLI entry point. Added a third strategy, classic **hunt-and-target**
+  (random search, then adjacent-cell mop-up, preferring to extend an
+  established line of hits), because "beats random" is a low bar — the honest
+  comparison is against the algorithm most public Battleship AIs actually
+  ship.
+- **Reproducibility by seeding `Math.random`.** Every game runs inside
+  `withSeededRandom(seed, ...)`, which swaps in a mulberry32 PRNG and restores
+  the original in a `finally`. Both the engine's fleet placement and the AI's
+  tie-breaking go through `Math.random`, so a seed pins an entire game
+  end-to-end, and any anomaly replays with
+  `node scripts/harness.js --repro <seed> --strategy <name>`. Anomalies still
+  carry the full move history as well. *Assessment: good* — monkey-patching a
+  global is normally a smell, but it buys total reproducibility without
+  changing a single module contract, and it is confined to a dev script.
+- **Two measurement modes.** Duel mode is the real alternating game. But duel
+  shot counts are *censored*: a lucky random player finishes first in ~52% of
+  random-vs-random games, so averaging only the games a strategy won flatters
+  weak strategies badly. So the arena numbers come from "clearing" mode, where
+  the AI fires every turn until the player's board is clear. The harness pins
+  `state.turn` back to `"ai"` between calls; every shot still goes through
+  `engine.fireAt` and no rule is reimplemented. *Assessment: slightly risky* —
+  it reaches into a state field the engine owns — but the alternative was
+  publishing biased numbers, and both modes are run and reported.
+- **Results (2,000 games per strategy per mode; 12,000 games total).**
+  Shots to clear a 10x10 board: **Bayesian 44.9 avg** (median 44, best 22,
+  worst 70, 39.6% hit rate) · **hunt-and-target 60.0** (median 59, best 24,
+  worst 100, 30.2%) · **random 95.3** (median 97, best 59, worst 100, 17.9%).
+  The real AI is **53% more efficient than random and 25% more efficient than
+  hunt-and-target**. In duels against a random-firing player it won
+  2000/2000; hunt-and-target won 98.9%; random won 48.4%.
+- **Anomalies: zero across 12,000 simulated games.** Every move was checked
+  for shot legality, no-op-on-repeat (actively probed by re-firing each shot
+  and discarding the result, rather than waiting for a strategy to trip over
+  it), monotonic `shotsReceived`, sunk-implies-all-cells-hit and its converse,
+  result-vs-board agreement, history numbering/attribution, an
+  `isGameOver`/`status` cross-check, and a 200-move (2x cell count)
+  termination bound. The engine held up completely under normal play. That's
+  a real result, and also a boring one, which is why:
+- **`auditEngineContract()` — five real contract violations found.** Normal
+  play never produces malformed input, so scale alone proves nothing about
+  the edges. Deliberate probes found that `engine.fireAt`: (1) accepts
+  **off-board** cells as ordinary misses, (2) accepts **fractional**
+  coordinates, permanently inserting an unmatchable `"1.5,2"` key into
+  `shotsReceived`, (3) **keeps accepting shots after the game is over**,
+  appending history entries and flipping `turn` while `status` stays terminal
+  — directly corrupting the history the Battle Report and efficiency stat
+  read, (4) never checks the **target board matches whose turn it is**, so a
+  caller can shoot its own fleet and be logged as the actor, and (5) silently
+  treats **any unrecognised board name** as `"ai"` (the ternary has no third
+  branch), so a typo misfires instead of throwing. `planning/technical-design.md`
+  says `fireAt` "validates the shot"; today it validates exactly one thing.
+  These are reported, not worked around — no engine code was changed here,
+  per the brief's boundaries. They are the raw material for `BUGS.md`.
+- **Strategy Arena (`src/arena.js`).** The harness writes `src/baseline.js`, a
+  generated constants file (avg/median/best/worst/hit-rate plus a bucketed
+  distribution per strategy). `mountArena(rootEl)` renders a launcher on the
+  *launch* screen that opens a fixed-position overlay — deliberately not
+  appended below the battle view, which was just fitted to 1440x700 with zero
+  scrolling (verified still 700px, no scroll, no console errors). Costs
+  `src/ui.js` one import and one call, and `index.html` one empty `<div>`.
+  Everything inside `mountArena` is wrapped in a try/catch that returns
+  `false`; the module also injects its own stylesheet, so `src/style.css` is
+  untouched.
+- **Charts are normalised per strategy, not on a shared vertical axis.**
+  Tried shared first: random search's 1,340-game spike in the 95-100 bin
+  squashed the other two distributions into invisible slivers. The comparison
+  is carried by the shared *horizontal* axis (every chart spans 15-100 shots)
+  and the avg-shots figure. *Assessment: good* — but it is a judgement call,
+  and a reader who assumes a common y-axis would misread the bar heights,
+  which is why each chart is labelled with its own median.
+- **Honest weaknesses.** The arena is only reachable from the launch screen,
+  so a player who dives straight into a game never sees it. `src/baseline.js`
+  is generated but committed, so it silently goes stale if the AI changes —
+  there is no CI check that re-runs the harness. And the five contract bugs
+  above are documented but unfixed; that fix belongs to whoever owns
+  `engine.js`, and until it lands the "validates the shot" line in the
+  technical design is aspirational.

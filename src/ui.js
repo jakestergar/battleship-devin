@@ -13,6 +13,7 @@ import {
 } from "./engine.js";
 import { chooseMove as realChooseMove } from "./ai.js";
 import { shipSvg } from "./ships.js";
+import { mountArena } from "./arena.js";
 import {
   initAudio,
   isMuted,
@@ -1012,6 +1013,7 @@ function init() {
   frameBoard(els.playerBoard.parentElement);
   frameBoard(els.placementBoard.parentElement);
   setUpReticle();
+  mountArena(document.getElementById("strategy-arena"));
   initAudio();
   renderMuteButton();
 
