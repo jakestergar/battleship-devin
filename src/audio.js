@@ -353,41 +353,78 @@ function playNoise({
 }
 
 /**
- * The shell in flight: a descending whistle with a little vibrato, band-passed
- * so it reads as air rather than as a synth tone. Swells in and fades out so
- * it sits under the cannon's tail instead of interrupting it.
+ * The shell in flight.
+ *
+ * The first version was a sine with vibrato, which is precisely how you
+ * synthesize a *person* whistling — and that is exactly what it sounded like.
+ * A shell is not a tone. It is air being torn open: broadband noise, shaped by
+ * a sharply resonant filter that sweeps down as the round falls. The filter's
+ * resonance supplies just enough pitch for the ear to track the descent
+ * without it ever becoming musical.
+ *
+ * A quiet detuned sawtooth pair rides underneath at low level to give the
+ * sweep some body; on its own the filtered noise reads as wind rather than as
+ * something with mass.
  */
-function playWhistle({ from = 2100, to = 620, duration = 0.5, peak = 0.1, delay = 0 }) {
+function playWhistle({ from = 2600, to = 480, duration = 0.55, peak = 0.3, delay = 0 }) {
   const at = ctx.currentTime + delay;
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
+
+  // Broadband source.
+  const frames = Math.floor(ctx.sampleRate * (duration + 0.1));
+  const buffer = ctx.createBuffer(1, frames, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < frames; i++) data[i] = Math.random() * 2 - 1;
+  const noise = ctx.createBufferSource();
+  noise.buffer = buffer;
+
+  // High Q is what turns a hiss into a shriek with a trackable pitch.
   const band = ctx.createBiquadFilter();
-  const vibrato = ctx.createOscillator();
-  const vibratoDepth = ctx.createGain();
-
-  osc.type = "sine";
-  osc.frequency.setValueAtTime(from, at);
-  osc.frequency.exponentialRampToValueAtTime(to, at + duration);
-
-  vibrato.frequency.value = 11;
-  vibratoDepth.gain.value = 18;
-  vibrato.connect(vibratoDepth).connect(osc.frequency);
-
   band.type = "bandpass";
   band.frequency.setValueAtTime(from, at);
   band.frequency.exponentialRampToValueAtTime(to, at + duration);
-  band.Q.value = 2.2;
+  band.Q.value = 16;
 
+  // Second, wider band an octave down: stops it sounding thin and electronic.
+  const body = ctx.createBiquadFilter();
+  body.type = "bandpass";
+  body.frequency.setValueAtTime(from / 2, at);
+  body.frequency.exponentialRampToValueAtTime(to / 2, at + duration);
+  body.Q.value = 4;
+
+  const gain = ctx.createGain();
   gain.gain.setValueAtTime(0, at);
-  gain.gain.linearRampToValueAtTime(peak, at + duration * 0.25);
-  gain.gain.setValueAtTime(peak, at + duration * 0.6);
+  gain.gain.linearRampToValueAtTime(peak, at + duration * 0.3);
+  gain.gain.setValueAtTime(peak, at + duration * 0.72);
   gain.gain.exponentialRampToValueAtTime(0.0001, at + duration);
 
-  osc.connect(band).connect(gain).connect(sfx || master);
-  osc.start(at);
-  vibrato.start(at);
-  osc.stop(at + duration + 0.05);
-  vibrato.stop(at + duration + 0.05);
+  const bodyGain = ctx.createGain();
+  bodyGain.gain.value = 0.5;
+
+  noise.connect(band).connect(gain);
+  noise.connect(body).connect(bodyGain).connect(gain);
+  gain.connect(sfx || master);
+  noise.start(at);
+  noise.stop(at + duration + 0.08);
+
+  // A touch of mass under the shriek. Two detuned saws, heavily filtered, at a
+  // level you feel more than hear.
+  for (const detune of [-7, 7]) {
+    const osc = ctx.createOscillator();
+    const oscGain = ctx.createGain();
+    const lp = ctx.createBiquadFilter();
+    osc.type = "sawtooth";
+    osc.detune.value = detune;
+    osc.frequency.setValueAtTime(from / 3, at);
+    osc.frequency.exponentialRampToValueAtTime(to / 3, at + duration);
+    lp.type = "lowpass";
+    lp.frequency.value = 1400;
+    oscGain.gain.setValueAtTime(0, at);
+    oscGain.gain.linearRampToValueAtTime(peak * 0.22, at + duration * 0.35);
+    oscGain.gain.exponentialRampToValueAtTime(0.0001, at + duration);
+    osc.connect(lp).connect(oscGain).connect(sfx || master);
+    osc.start(at);
+    osc.stop(at + duration + 0.05);
+  }
 }
 
 /**
@@ -434,7 +471,7 @@ const EFFECTS = {
     // a click plus a rumble, with a hole where the chest of it should be.
     playTone({ type: "triangle", from: 260, to: 70, duration: 0.5, peak: 0.3 });
     playTone({ type: "sine", from: 140, to: 34, duration: 0.8, peak: 0.55 });
-    playWhistle({ from: 2100, to: 560, duration: 0.6, peak: 0.26, delay: 0.16 });
+    playWhistle({ from: 2800, to: 430, duration: 0.62, peak: 0.34, delay: 0.14 });
   },
 
   // Splash: the plunk of displacement, then the burst of water, then spray.

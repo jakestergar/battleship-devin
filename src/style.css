@@ -500,7 +500,11 @@ body {
 .console {
   min-width: 240px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  /* Exactly two columns, not auto-fit. The pairing is meaningful — rosters
+     face each other, and AI Confidence sits beside Verify Fairness because
+     both are claims about the opponent's reasoning. auto-fit produced three
+     columns on wide screens and broke that reading. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-content: start;
   gap: 14px;
 }
@@ -1063,10 +1067,13 @@ body {
   color: var(--brass);
 }
 
-/* Very short viewports (a 720p shared screen is the realistic worst case).
-   Six console blocks no longer fit at normal spacing, and the console is what
-   sets the page height, so tighten its chrome rather than lose a panel. */
-@media (max-height: 680px) {
+/* Short viewports. The console sets the page height, so tighten its chrome
+   rather than lose a panel.
+
+   Threshold raised from 680px: once "Who Is Winning" spanned the full width
+   the console gained a row, and a 700px laptop viewport was getting small
+   board cells but still roomy panels — the worst of both. */
+@media (max-height: 900px) {
   /* Three narrower columns instead of two: with six blocks that turns three
      rows into two, which is what actually buys back the height. */
   .console {
@@ -1900,4 +1907,87 @@ body.phase-title #exhibition-root .exh-launch {
 .about-close:hover {
   color: var(--fog);
   border-color: var(--fog-dim);
+}
+
+/* ---------------------------------------------------------------------------
+   Console layout emphasis
+   "Who Is Winning" is the readout a player actually watches, so it spans the
+   full console width rather than sharing a row. Ordnance does too: its buttons
+   need the room, and it only appears in ADVANCED. Spanning with 1 / -1 means
+   this holds however many columns the responsive rules produce.
+--------------------------------------------------------------------------- */
+
+/* Only the win readout spans. Making Ordnance span too cost a whole extra
+   row and pushed the console past the viewport. */
+#odds-block {
+  grid-column: 1 / -1;
+}
+
+#odds-block .odds-bar {
+  height: 14px;
+}
+
+#odds-block .odds-split {
+  font-size: 13px;
+}
+
+/* The AI's reasoning now lives under the confidence meter — same subject, one
+   panel. Kept visually quieter than the metric above it. */
+#explain-panel {
+  margin: 10px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--fog-dim);
+}
+
+#explain-panel.explain-active {
+  color: var(--fog);
+}
+
+/* ---------------------------------------------------------------------------
+   SHORT VIEWPORT HARD TIER
+   A 720p shared screen is the realistic worst case for a live demo. Once
+   "Who Is Winning" gained a full-width row the console no longer fit there,
+   so drop the cell size again and strip the console back to its numbers.
+   Appended last deliberately: several earlier max-height blocks also set
+   --cell, and equal-specificity rules are resolved by document order.
+--------------------------------------------------------------------------- */
+
+@media (max-height: 660px) {
+  :root {
+    --cell: 26px;
+  }
+
+  .console-block {
+    padding: 7px 10px;
+  }
+
+  .console-block h3 {
+    margin-bottom: 4px;
+  }
+
+  /* Explanatory prose is the first thing to go; the readouts stay. */
+  .odds-note,
+  .powerup-hint,
+  #explain-panel {
+    display: none;
+  }
+}
+
+/* Two columns is the preferred reading, but it is one row taller than a
+   denser grid and that row does not fit on a short screen. Below ~800px of
+   viewport height, let the console reflow into as many columns as will fit:
+   losing the pairing is a smaller cost than losing the no-scroll guarantee. */
+@media (max-height: 820px) {
+  /* Keep the two-column pairing; recover the height from explanatory copy,
+     which is guidance rather than live state. */
+  .odds-note,
+  .powerup-hint,
+  #explain-panel {
+    display: none;
+  }
+
+  .console-block {
+    padding: 9px 12px;
+  }
 }

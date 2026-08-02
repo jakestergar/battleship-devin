@@ -180,17 +180,14 @@
               <div id="confidence-bar" class="meter-fill"></div>
             </div>
             <p id="confidence-value" class="metric">—</p>
-          </div>
-
-          <div class="console-block">
-            <h3>Explain This Move</h3>
             <p id="explain-panel" class="explain">
-              Click the AI's most recent shot marker on your fleet to see why it
-              fired there.
+              Click the AI's latest shot to see why it fired there.
             </p>
           </div>
 
           <!-- Populated by src/fairness-ui.js via mountFairness() -->
+
+          <div id="fairness-panel" class="console-block"></div>
           <div id="powerups" class="console-block" hidden>
             <h3>Ordnance</h3>
             <p id="powerup-points" class="metric">0 pts</p>
@@ -207,9 +204,7 @@
             </p>
           </div>
 
-          <div id="fairness-panel" class="console-block"></div>
-
-          <div class="console-block">
+          <div id="odds-block" class="console-block">
             <h3>Who Is Winning</h3>
             <div class="odds-bar" role="img" aria-label="Estimated win probability">
               <div id="odds-fill" class="odds-fill"></div>
