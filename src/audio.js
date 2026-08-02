@@ -4,7 +4,15 @@
 // the browser's autoplay policy, or throws — audio is a purely additive
 // layer and must never break gameplay (see planning/battleship-prd.md §5).
 
+import { createChiptune } from "./chiptune.js";
+
 const STORAGE_KEY = "battleship:muted";
+const TRACK_KEY = "battleship:track";
+
+// "chip" is the NES-style 2A03 track (see chiptune.js); "naval" is the
+// original ambient sonar drone kept below. Chip is the default because the
+// drone was atmosphere rather than a tune, and this is a game.
+const TRACKS = ["chip", "naval"];
 
 // A minor-ish naval drone: root, fifth, minor third, octave (Hz).
 const PAD_VOICES = [98, 146.83, 174.61, 196];
@@ -21,12 +29,31 @@ let melodyTimer = null;
 let melodyStep = 0;
 let muted = false;
 let started = false;
+let chiptune = null;
+let track = "chip";
 
 function readStoredMute() {
   try {
     return localStorage.getItem(STORAGE_KEY) === "true";
   } catch {
     return false;
+  }
+}
+
+function readStoredTrack() {
+  try {
+    const stored = localStorage.getItem(TRACK_KEY);
+    return TRACKS.includes(stored) ? stored : "chip";
+  } catch {
+    return "chip";
+  }
+}
+
+function storeTrack(value) {
+  try {
+    localStorage.setItem(TRACK_KEY, value);
+  } catch {
+    /* private mode / disabled storage — the choice just isn't remembered */
   }
 }
 
@@ -114,9 +141,14 @@ export function startMusic() {
     if (ctx.state === "suspended") ctx.resume();
     if (started) return;
     started = true;
-    startPadDrone();
-    stepMelody();
-    melodyTimer = setInterval(stepMelody, BEAT_MS);
+    if (track === "chip") {
+      if (!chiptune) chiptune = createChiptune(ctx, musicGain);
+      chiptune.start();
+    } else {
+      startPadDrone();
+      stepMelody();
+      melodyTimer = setInterval(stepMelody, BEAT_MS);
+    }
   } catch {
     started = false;
   }
@@ -125,10 +157,36 @@ export function startMusic() {
 export function stopMusic() {
   try {
     if (melodyTimer) clearInterval(melodyTimer);
+    if (chiptune) chiptune.stop();
   } catch {
     /* nothing to clean up */
   }
   melodyTimer = null;
+}
+
+export function getMusicTrack() {
+  return track;
+}
+
+/**
+ * Switches tracks. The sonar drone's oscillators run for the lifetime of the
+ * context and cannot be torn down cleanly, so switching away from "naval"
+ * only silences its scheduler — a full teardown would need the drone rebuilt
+ * as a disposable graph, which is not worth it for a two-track toggle.
+ */
+export function setMusicTrack(next) {
+  if (!TRACKS.includes(next)) return track;
+  if (next === track) return track;
+  stopMusic();
+  track = next;
+  storeTrack(track);
+  started = false;
+  startMusic();
+  return track;
+}
+
+export function toggleMusicTrack() {
+  return setMusicTrack(track === "chip" ? "naval" : "chip");
 }
 
 /** Noise burst shaped by a filter — the basis of splashes and explosions. */
@@ -245,5 +303,6 @@ export function toggleMuted() {
 /** Restores the persisted mute preference. Safe to call before any audio. */
 export function initAudio() {
   muted = readStoredMute();
+  track = readStoredTrack();
   return muted;
 }
