@@ -23,10 +23,14 @@ body {
     var(--abyss);
 }
 
+/* The console has to sit BESIDE the boards, not under them. Two board panels
+   plus the console's 240px minimum need ~1184px; the old 1180px cap missed by
+   about four pixels, so the console wrapped onto a second row and pushed the
+   confidence meter, explain panel and shot count below the fold. */
 .frame {
-  max-width: 1180px;
+  max-width: 1440px;
   margin: 0 auto;
-  padding: 28px 24px 48px;
+  padding: 20px 24px 24px;
 }
 
 .masthead {
@@ -71,12 +75,63 @@ body {
   display: none;
 }
 
+/* Explicit three-column grid rather than a wrapping flex row: wrapping was
+   silent and load-bearing failure, since the column that dropped was the one
+   carrying the AI-reasoning readouts. Grid makes the intent structural. */
 .theatre {
   position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 24px;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: max-content max-content minmax(240px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+/* Below the width needed for three columns, fall back to boards-side-by-side
+   with the console beneath, then to a single column on narrow screens. */
+/* Boards shrink with viewport height, so three columns keep fitting well below
+   the width you'd expect. Only drop the console under the boards once three
+   genuinely cannot fit. */
+@media (max-width: 1080px) {
+  .theatre {
+    grid-template-columns: max-content max-content;
+  }
+
+  .theatre > .console {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 900px) {
+  .theatre {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Height budget matters as much as width: a 13" laptop is ~700px of viewport,
+   and the whole point is that a reviewer sees the AI readouts without
+   scrolling. Shrink the cells rather than let the console fall off-screen. */
+@media (max-height: 920px) {
+  :root {
+    --cell: 34px;
+  }
+
+  .masthead h1 {
+    font-size: 42px;
+  }
+}
+
+@media (max-height: 780px) {
+  :root {
+    --cell: 29px;
+  }
+
+  .masthead h1 {
+    font-size: 34px;
+  }
+
+  .frame {
+    padding: 14px 20px 18px;
+  }
 }
 
 /* Missiles arc between the two boards, so the layer has to span both. */
@@ -438,12 +493,16 @@ body {
   background: linear-gradient(180deg, var(--phosphor), var(--phosphor-dim));
 }
 
+/* The console is the tallest column, so it — not the boards — decides whether
+   the page fits. It receives all leftover width (1fr), and on short, wide
+   screens (laptops) that leftover is substantial, so let the blocks flow into
+   however many columns fit rather than stacking into one tall strip. */
 .console {
-  flex: 1 1 240px;
   min-width: 240px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  align-content: start;
+  gap: 14px;
 }
 
 .console-block {
