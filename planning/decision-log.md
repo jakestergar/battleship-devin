@@ -463,3 +463,77 @@ sunk on their own, as the fallback.
   `06-exhibition-brief.md`, `07-coach-brief.md` written and ready to
   dispatch. Sessions 5-7 can run in parallel with each other and with the
   still-unstarted harness (Session 4).
+
+### 19. Post-game coach: mirrored replay for per-turn knowledge, mean shot-efficiency ratio for score
+- **Context:** Session 7 (`planning/session-briefs/07-coach-brief.md`). Grade
+  the human's shots against the same Bayesian Search Theory engine the AI uses,
+  in `src/coach.js` (pure) + `src/coach-ui.js` (render only).
+
+- **Reconstructing per-turn knowledge — the mirrored replay.**
+  `ai.computeProbabilityMap(state)` is hard-wired to attack `state.playerBoard`
+  using the `actor === "ai"` slice of `state.history`. Rather than fork or
+  parameterise the AI (the brief forbids touching its contract, and a fork
+  would drift), the coach builds a **mirror state** for each shot `i`: the real
+  `aiBoard` is placed in the `playerBoard` slot, and `history.slice(0, i)` of
+  the player's shots is relabelled `actor: "ai"`. The AI then grades the human
+  using literally the same code path it uses to play.
+  `gatherFairKnowledge` reads exactly four things, and each is rebuilt from the
+  prefix alone: board size (constant); `shotsReceived` (rebuilt from the prefix
+  — the live `aiBoard.shotsReceived` holds every shot of the whole game and is
+  the single most obvious leak, so it is never passed through); the relabelled
+  prefix history; and `ships[].cells` for ships whose id appears as a `"sunk"`
+  result *within that prefix*, which is public information at that point. Each
+  ship's `hits`/`sunk` are rewound to the prefix too, even though nothing reads
+  them today — belt-and-braces against a future ai.js change silently leaking.
+- **Weaknesses, honestly.** (1) The guarantee is *by inspection of ai.js*, not
+  structural. If `gatherFairKnowledge` ever starts reading a fifth field off
+  the board, the mirror could leak without any test noticing — a
+  `Proxy`-trapped board in the tests would catch that and is the obvious next
+  hardening. (2) The tests defend the boundary three ways — turn 1 must see a
+  virgin 100-cell board, grades must be prefix-invariant when later turns are
+  deleted, and a sink on turn *n* must not affect the grade of turn *n-1* —
+  which is strong evidence but not a proof. (3) The coach grades the human as
+  if they reasoned like the AI. A human cannot enumerate ~2,000 placements in
+  their head, so "optimal" here is a machine benchmark, not a fair human one.
+  That is stated as the framing, not hidden.
+
+- **Score = mean over graded shots of `probability / bestProbability`**, i.e.
+  the share of the turn's available information the shot actually bought.
+  Chosen because it grades the *decision, not the dice* — firing at the single
+  best cell and missing still scores 1.0 for that turn, which is correct — and
+  because every turn contributes a commensurable number in [0,1], so no single
+  lucky turn can dominate. Turns with no meaningful choice are skipped, not
+  failed: one-or-zero cells left, a uniformly-zero map (every ship already
+  sunk), or every open cell carrying identical weight.
+- **Weaknesses, honestly.** The AI's `HIT_BOOST_FACTOR` of 100 per covered hit
+  means that once a ship is wounded, any cell that cannot complete it scores
+  1e-2 to 1e-4 of the best cell. Failing to follow up a hit therefore costs
+  almost the whole turn. That is the right *ordering* — wandering off after a
+  hit is the most expensive mistake in Battleship — but the *magnitude* is an
+  artefact of a constant chosen for the AI's play, not for grading, so the
+  scale is not linear in any principled sense. Consequences: a competent human
+  heuristic (parity sweep + adjacent follow-up) scores 0.53-0.66, and the
+  arithmetic mean is dominated by follow-up turns rather than search turns.
+  Considered and rejected: a geometric mean (crushes everything toward zero
+  once any single turn is bad) and shots-taken vs. an AI replay of the same
+  board (grades luck as much as judgement). Also rejected: rescaling against a
+  random-search baseline to make the number look friendlier — that is exactly
+  the flattery the brief rules out. **Assessment: defensible but harsh, and
+  the harshness is a deliberate, documented choice rather than a calibration.**
+- **Vacuous case:** if no turn was gradeable, `score` is 1 ("nothing to get
+  wrong") and `formatCoachReport` says so in words rather than printing a
+  meaningless percentage. Reporting 0 there would be dishonest in the other
+  direction.
+
+- **Integration:** obeyed the Decision 18 budget exactly — one import line and
+  one call site (`mountCoach(els.endScreen, () => state)` at the top of
+  `renderEndScreen`) in `ui.js`, one `<div id="coach-report">` in
+  `index.html`. `mountCoach` is fully wrapped, caches its grade against the
+  state object, and clears itself when the game is not over, so a failure
+  leaves the end screen and the New Game button untouched. Verified in headless
+  Chrome over CDP: full game played, panel rendered, New Game still functional,
+  zero console errors.
+- **Outcome:** `src/coach.js`, `src/coach-ui.js`, `tests/coach.test.js` (14
+  tests), `scripts/coach-sample.mjs` (throwaway demo that produced the sample
+  report in the PR). 42 tests pass. Optimal player scores 1.000000; worst-case
+  player scores 0.037833 — a gap of 0.96, asserted explicitly in the tests.

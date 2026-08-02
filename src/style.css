@@ -792,6 +792,64 @@ body {
   text-align: left;
 }
 
+/* ---- Post-game coach ---- */
+
+#coach-report:not(:empty) {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(220, 230, 235, 0.12);
+  text-align: left;
+}
+
+.coach-heading {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--brass);
+}
+
+.coach-meter {
+  display: block;
+  height: 4px;
+  margin: 10px 0 12px;
+  background: var(--hull-2);
+  border: 1px solid var(--brass-dim);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.coach-meter-fill {
+  display: block;
+  height: 100%;
+  background: var(--phosphor);
+  box-shadow: 0 0 10px rgba(58, 219, 118, 0.5);
+}
+
+.coach-prose {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--fog);
+}
+
+.coach-worst {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--fog-dim);
+}
+
+.coach-worst li {
+  border-left: 2px solid var(--brass-dim);
+  padding-left: 8px;
+}
+
 /* ---- Buttons ---- */
 
 .button {

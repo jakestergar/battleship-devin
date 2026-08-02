@@ -12,6 +12,7 @@ import {
   validateFleetLayout,
 } from "./engine.js";
 import { chooseMove as realChooseMove } from "./ai.js";
+import { mountCoach } from "./coach-ui.js";
 import { shipSvg } from "./ships.js";
 import {
   initAudio,
@@ -479,6 +480,7 @@ function renderStatusLine() {
 }
 
 function renderEndScreen() {
+  mountCoach(els.endScreen, () => state);
   if (!isGameOver(state)) {
     els.endScreen.hidden = true;
     return;
