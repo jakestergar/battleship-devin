@@ -15,6 +15,7 @@ import { chooseMove as realChooseMove } from "./ai.js";
 import { shipSvg } from "./ships.js";
 import { mountSinkCallout } from "./sink.js";
 import { mountFairness } from "./fairness-ui.js";
+import { mountExhibition } from "./exhibition.js";
 import {
   initAudio,
   isMuted,
@@ -1081,6 +1082,9 @@ function init() {
   document.addEventListener("keydown", onKeyDown);
 
   sinkCallout = mountSinkCallout(document.body);
+  // Self-contained AI-vs-AI mode. Owns its own container, its own styles and
+  // its own GameState; never throws (returns an inert controller instead).
+  mountExhibition(document.getElementById("exhibition-root"));
 
   enterPlacementPhase();
 }

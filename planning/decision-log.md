@@ -525,3 +525,76 @@ sunk on their own, as the fallback.
   exactly 700px with results shown — 189px tall against roughly 209px of
   available slack. Klaxon is deliberately not used for a FAIL verdict; per
   `src/tokens.css` it stays reserved for hit/sunk, so failure reads in brass.
+### 19. AI vs AI exhibition mode: mirrored state view, shaped heatmap, full-screen overlay
+- **Decision:** `src/exhibition.js` runs two instances of the existing AI
+  against each other using only `engine.js` and `ai.js`, and renders both
+  probability-density heatmaps live, side by side, in a self-contained
+  full-screen overlay. Four non-obvious calls sit underneath that:
+  1. **`mirrorView(state)` instead of a second AI seat.** `ai.chooseMove` is
+     written from one seat: it always attacks `state.playerBoard` and treats
+     `actor === "ai"` history entries as its own. Rather than modify that
+     contract (explicitly out of bounds) or fork the AI, the exhibition hands
+     the second engine a *mirrored view* — the same state with the two boards
+     and the two actor labels swapped. ALPHA occupies the engine's "player"
+     seat, BRAVO the "ai" seat; every shot still goes through
+     `engine.fireAt`, and the engine's own turn flag drives alternation.
+  2. **Shaped heatmap intensities (`shapeIntensities`).** Linear alpha on the
+     normalised map does not work here and this is the single biggest visual
+     call in the feature. `ai.js` multiplies weights by
+     `HIT_BOOST_FACTOR ** hitsCovered` (100^n), so the instant either AI lands
+     a hit the peak is 100x-10,000x everything else and the board renders as
+     one bright cell on black — the viewer sees no reasoning at all. Before
+     any hit the density is nearly flat and renders as an even green wash.
+     The fix blends a rank (histogram-equalisation) term with the raw
+     normalised value, so the field reads as terrain before a hit and as a
+     spotlight after one. `ui.js`'s `normalizeProbabilityMap` is still the
+     only normaliser; shaping is a display transform layered on top.
+  3. **Full-screen overlay, not a panel below the battle view.** The battle
+     view was just tuned to fit 1440x700 with zero scrolling. The container
+     added to `index.html` is a single `position: fixed` div that is empty
+     until mounted, so it contributes nothing to document flow and cannot
+     reintroduce scrolling. The entry point is a fixed pill in the bottom-
+     right corner for the same reason.
+  4. **Styles injected by the module, not added to `style.css`.** Three
+     sessions are editing this repo in parallel; a `<style>` element owned by
+     `exhibition.js` (and removed by `destroy()`) keeps the merge surface to
+     one import line in `ui.js`, one call site, and one `<div>` in the HTML.
+- **Timer discipline:** every timeout goes through a module-level `schedule()`
+  that registers it in a live set, and `activeTimerCount()` is exported so the
+  "stray interval running behind the real game" failure can be *asserted*
+  rather than assumed. Verified in a real browser over CDP: 0 outstanding
+  timers after closing a finished match, after closing mid-match, and after
+  Escape. Headless play schedules no timers at all. A `visibilitychange`
+  listener also pauses the match in a background tab.
+- **Assessment: good, with three honest weaknesses.**
+  - *Risky:* `exhibition.js` imports `normalizeProbabilityMap` from `ui.js`,
+    while `ui.js` imports `mountExhibition` — a genuine circular import. It is
+    safe today only because both are `export function` declarations (hoisted)
+    and neither calls into the other at module-evaluation time. It works, and
+    the brief asked for the reuse, but the honest structural fix is to move
+    `normalizeProbabilityMap` into a shared module. Left alone deliberately:
+    that refactor touches `ui.js` well beyond the one line this session is
+    allowed.
+  - *Risky:* `mirrorView` shares board objects by reference with the state it
+    mirrors. That is safe only because `ai.js` is genuinely pure and only
+    reads. If the AI ever gained a cache or a side effect, this would leak
+    across seats silently. The tests assert non-mutation of an externally
+    supplied `GameState`, which would catch the obvious version of that
+    regression but not a subtle one.
+  - *Bad, accepted:* the exhibition shows both fleets' real hulls in brass.
+    That is unfair information *to the viewer*, not to either AI — neither
+    engine reads it — but it does mean the screen is showing something the
+    AIs cannot see. It is the whole point (you are watching the heat converge
+    on hulls you can see and they cannot), but it is worth being explicit
+    that this is a demonstration view, not a playable one.
+  - Minor: the overlay's `is-acting` highlight and the heat both use
+    `--phosphor`, so at a glance the two sides are distinguished only by the
+    brass ALPHA/BRAVO labels and the panel positions. A second accent would
+    read better, but the palette reserves `--klaxon` for hit/sunk and adding a
+    fourth colour would break the design system for one feature.
+- **Outcome:** 40 tests pass (28 pre-existing, 12 new). Over 300 headless
+  matches: mean 78 shots total (~39 per side), min 46, max 124. At
+  `STEP_MS = 170` that is ~13 seconds typical and ~21 seconds worst case,
+  inside the brief's 30-second budget. Verified in headless Chrome at
+  1440x700, 1280x720, 1920x1080, 1100x760 and 1024x700 — no scrolling on the
+  battle view or inside the overlay at any of them, clean console.
