@@ -38,12 +38,86 @@ export const RANDOM_HIT_RATE = FLEET_CELLS / (BOARD_SIZE * BOARD_SIZE);
 const PRIOR_WEIGHT = 8;
 
 const DEFAULT_TRIALS = 3000;
-// A race cannot sanely exceed this many half-turns; guards against a zero
-// hit rate producing an unbounded loop.
-const MAX_STEPS = 400;
+// Guards against a very low sampled hit rate producing an unbounded loop.
+//
+// This was originally 400 and it silently biased every estimate: sampling the
+// hit rate from a Beta posterior means some trials draw a rate near 0.02, and
+// clearing 17 cells at that rate needs ~850 shots. Those trials hit the cap,
+// and the loop scored anything that was "not a player win" as an AI win — so
+// slow trials were quietly awarded to the AI. A dead-even opening position
+// read 45.7% instead of just over 50%.
+//
+// Two fixes, both needed: a cap high enough that timeouts are genuinely rare,
+// and counting unresolved trials as unresolved rather than as a loss.
+const MAX_STEPS = 3000;
 
 function smoothedHitRate(hits, shots) {
   return (hits + RANDOM_HIT_RATE * PRIOR_WEIGHT) / (shots + PRIOR_WEIGHT);
+}
+
+// ---------------------------------------------------------------------------
+// Sampling the hit rate rather than assuming it
+//
+// An earlier version used the smoothed point estimate directly in every
+// trial, and it was badly overconfident: one lucky opening hit put the AI at
+// 94%, three at 99.9%. The arithmetic was right and the model was wrong. A
+// single observation gives a hit rate of 0.262 against the player's 0.170,
+// and because the race needs ~16 successes, that small gap compounds into
+// near-certainty — but the gap itself was almost pure noise.
+//
+// The fix is to treat each side's hit rate as what it actually is: an unknown
+// quantity with a posterior distribution, not a number. Hits are Bernoulli, so
+// the conjugate posterior is Beta(prior_hits + hits, prior_misses + misses),
+// and every trial draws its own rate from that posterior. Early on the
+// posterior is wide, the drawn rates overlap heavily, and the estimate sits
+// near even where it belongs. As real evidence accumulates the posterior
+// narrows on its own and the estimate sharpens — without any hand-tuning.
+// ---------------------------------------------------------------------------
+
+/** Box-Muller. One normal deviate per call; the second is discarded. */
+function normalSample(random) {
+  let u = 0;
+  while (u === 0) u = random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * random());
+}
+
+/** Marsaglia and Tsang's gamma sampler. */
+function gammaSample(shape, random) {
+  if (shape < 1) {
+    // Boost a sub-1 shape into the valid range, then correct.
+    return gammaSample(shape + 1, random) * Math.pow(random() || Number.EPSILON, 1 / shape);
+  }
+  const d = shape - 1 / 3;
+  const c = 1 / Math.sqrt(9 * d);
+  for (let guard = 0; guard < 1000; guard++) {
+    let x;
+    let v;
+    do {
+      x = normalSample(random);
+      v = 1 + c * x;
+    } while (v <= 0);
+    v = v * v * v;
+    const u = random();
+    if (u < 1 - 0.0331 * x * x * x * x) return d * v;
+    if (Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) return d * v;
+  }
+  return d; // unreachable in practice; keeps the loop bounded
+}
+
+/** Beta(a, b) as the ratio of two gamma draws. */
+function betaSample(a, b, random) {
+  const g1 = gammaSample(a, random);
+  const g2 = gammaSample(b, random);
+  const total = g1 + g2;
+  return total > 0 ? g1 / total : 0.5;
+}
+
+/** Posterior parameters for one side's hit rate. */
+function posterior(hits, shots) {
+  return {
+    alpha: RANDOM_HIT_RATE * PRIOR_WEIGHT + hits,
+    beta: (1 - RANDOM_HIT_RATE) * PRIOR_WEIGHT + Math.max(0, shots - hits),
+  };
 }
 
 /**
@@ -101,26 +175,40 @@ export function estimateWinProbability(state, options = {}) {
   const playerRate = smoothedHitRate(playerTally.hits, playerTally.shots);
   const aiRate = smoothedHitRate(aiTally.hits, aiTally.shots);
 
+  const playerPosterior = posterior(playerTally.hits, playerTally.shots);
+  const aiPosterior = posterior(aiTally.hits, aiTally.shots);
+
   let playerWins = 0;
+  let resolved = 0;
   for (let t = 0; t < trials; t++) {
+    // Each trial commits to one plausible pair of hit rates drawn from the
+    // posteriors, then plays the race out. Averaging over trials therefore
+    // averages over our uncertainty about the rates as well as the dice.
+    const pRate = betaSample(playerPosterior.alpha, playerPosterior.beta, random);
+    const aRate = betaSample(aiPosterior.alpha, aiPosterior.beta, random);
+
     let p = playerNeeds;
     let a = aiNeeds;
     let playerToMove = state.turn !== "ai";
     let steps = 0;
     while (steps++ < MAX_STEPS) {
       if (playerToMove) {
-        if (random() < playerRate && --p <= 0) {
+        if (random() < pRate && --p <= 0) {
           playerWins++;
+          resolved++;
           break;
         }
-      } else if (random() < aiRate && --a <= 0) {
+      } else if (random() < aRate && --a <= 0) {
+        resolved++;
         break;
       }
       playerToMove = !playerToMove;
     }
   }
 
-  const player = playerWins / trials;
+  // Divide by trials that actually finished. An unresolved trial is missing
+  // information, not evidence for either side.
+  const player = resolved > 0 ? playerWins / resolved : 0.5;
   return {
     player,
     ai: 1 - player,

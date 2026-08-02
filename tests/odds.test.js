@@ -76,6 +76,50 @@ test("odds move monotonically as the player lands more hits", () => {
   }
 });
 
+test("a dead-even opening slightly favours the player, who moves first", () => {
+  // Regression: unresolved trials were scored as AI wins, so a symmetric
+  // opening position read 45.7% for the player instead of just over 50%.
+  const odds = estimateWinProbability({ ...createGame(), turn: "player" }, { trials: 6000 });
+  assert.ok(
+    odds.player >= 0.49 && odds.player <= 0.58,
+    `symmetric opening should be near even with a small first-mover edge, got ${odds.player}`
+  );
+});
+
+test("one lucky hit does not imply near-certainty", () => {
+  // Regression: using the point-estimate hit rate in every trial ignored how
+  // uncertain that estimate is. A single AI hit read as 94%, three as 99.9%.
+  let state = createGame();
+  state = fireAt(
+    { ...state, turn: "ai" },
+    "player",
+    state.playerBoard.ships[0].cells[0]
+  ).newState;
+  const odds = estimateWinProbability({ ...state, turn: "player" }, { trials: 6000 });
+  assert.ok(
+    odds.ai < 0.85,
+    `a single hit is weak evidence; AI should not be near-certain, got ${odds.ai}`
+  );
+});
+
+test("confidence grows with evidence rather than jumping", () => {
+  // Three hits should read as a stronger lead than one, but the gap should
+  // come from accumulating evidence, not from a single observation.
+  const oneHit = (() => {
+    let s = createGame();
+    s = fireAt({ ...s, turn: "ai" }, "player", s.playerBoard.ships[0].cells[0]).newState;
+    return estimateWinProbability({ ...s, turn: "player" }, { trials: 6000 }).ai;
+  })();
+  const threeHits = (() => {
+    let s = createGame();
+    for (const cell of s.playerBoard.ships[0].cells.slice(0, 3)) {
+      s = fireAt({ ...s, turn: "ai" }, "player", cell).newState;
+    }
+    return estimateWinProbability({ ...s, turn: "player" }, { trials: 6000 }).ai;
+  })();
+  assert.ok(threeHits > oneHit, "more evidence should mean more confidence");
+});
+
 test("a cleared enemy fleet is a settled win, not an estimate", () => {
   const won = damage(createGame(), "ai", FLEET_CELLS);
   const odds = estimateWinProbability(won, { trials: 100 });
