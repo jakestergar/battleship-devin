@@ -99,10 +99,107 @@ decisions 4 & 5).
 
 ---
 
-## Bug stories (fill in once playtesting/automated runs complete)
-- Bug 1: _TBD_
-- Bug 2: _TBD_
-- Bug 3 (ideally sourced from the automated playtest harness, at scale): _TBD_
+## Bug stories — for the ~10 minute debrief
+
+Full write-up in `BUGS.md`. These are the three to tell out loud, in this
+order. Each is a mini-story: what broke, how I noticed, what the cause
+actually turned out to be, how it was fixed.
+
+### 1. "Bugs don't live where the traffic is" — the headline
+
+The harness played **6,000 simulated games**, validating invariants after
+every single move. It found **zero** anomalies. The moment it stopped playing
+the game properly and started deliberately calling `fireAt` with garbage, it
+found **five real bugs** — off-board coordinates accepted, fractional
+coordinates producing a key like `"1.5,2"` that matched no cell and could
+never be cleared, shots accepted *after* the game had ended (corrupting the
+finished history that the post-game report reads), no turn validation so you
+could damage your own fleet, and an unknown board name silently defaulting to
+the enemy's.
+
+None are reachable by clicking. That's exactly why they survived.
+
+**The point:** volume of testing isn't coverage. I'd been about to call it
+done because thousands of normal games looked clean.
+
+**The follow-on:** fixing turn validation broke three tests — which had been
+firing twice in a row at the same board and only passed because the engine
+was permissive. The tests were wrong too.
+
+### 2. Being handed one wrong number and finding two bugs
+
+A playtester said: "after the AI's first hit it says 100%."
+
+Reproduced it — 94% after one hit, 99.9% after three. But investigating
+turned up something *not* reported: a completely symmetric opening position
+read **45.7%** for the player, who moves first and should be slightly ahead.
+Two separate bugs pushing the same direction.
+
+- **The estimate was treated as a fact.** The simulation used a point-estimate
+  hit rate and ran 3,000 trials all assuming it was exactly right. After one
+  shot that's 0.262 vs 0.170, and over a race needing ~16 successes that gap
+  compounds into near-certainty — from evidence that was almost pure noise.
+  The arithmetic was right; the *model* was wrong. Fix: each side's hit rate
+  now carries a Beta posterior and every trial draws its own rate from it.
+- **Timeouts were silently scored as AI wins.** Once rates are sampled, some
+  trials draw ~0.02 and need ~850 shots; the cap was 400 and the loop counted
+  "not a player win" as an AI win.
+
+**The point:** the reported symptom was real but it was the smaller half. And
+"correct arithmetic, wrong model" is a category of bug that no type system or
+test-count catches.
+
+### 3. The bug I caused, that threw no error
+
+Resolving a merge conflict in `style.css` by keeping both sides consumed the
+closing brace of a `@media` block. That silently disabled **~70 rules**,
+including every responsive fix. Nothing threw. Nothing logged. Tests passed.
+The only symptom was 65px of page overflow at one viewport size.
+
+Related, and worse: my *verification harness* had been serving a cached
+`ui.js`, so a round of "verified" results was measured against stale files —
+producing a false bug report about features that were mounting fine. For a
+while the tooling was less trustworthy than the code.
+
+**The fix that matters:** not the brace. I added a Devin `PostToolUse` hook
+that runs after any edit to a stylesheet and refuses to leave it unbalanced.
+The mistake is now structurally impossible in this repo, for any session.
+
+**The point:** the interesting move isn't fixing the bug, it's making the
+class of bug unrepeatable.
+
+### Bonus, if there's time: a hypothesis I got wrong
+
+Ship graphics looked missing. I had a confident, plausible theory — the art
+measures cell positions while the board is still hidden, so everything
+computes as zero-width and gets skipped, and the graceful-degradation wrapper
+would have swallowed it. Reading the code disproved it, and driving a real
+browser confirmed all five ships rendering at correct sizes.
+
+Worth telling because a confident wrong diagnosis is normal, and it cost less
+to disprove in a browser than to "fix" something that was never broken.
+
+---
+
+## How I debugged — the transferable part
+
+Four habits, in the order they earned their keep:
+
+1. **Run it, don't read it.** The harness executed 6,000 games and interpreted
+   the distribution. Suggesting a test and running one at scale are different
+   activities.
+2. **Probe the edges, don't add traffic.** Zero bugs in normal play, five at
+   the contract boundary.
+3. **Instrument, don't eyeball.** "The page is a bit long" versus "three of
+   your five differentiating features are below the fold, by four pixels."
+   Same page, and only one of those is actionable.
+4. **Encode the lesson, not just the fix.** A hook turns a resolution into a
+   guarantee.
+
+**Accuracy note for the room:** the hook is a Devin CLI feature I actually
+used. Playbooks, Knowledge and Automations are the platform equivalents at
+team scale — worth mentioning as product capability, but be explicit that I
+didn't use them here. Don't blur the two.
 
 ---
 
