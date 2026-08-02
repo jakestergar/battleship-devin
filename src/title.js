@@ -147,6 +147,26 @@ export function mountTitle(rootEl, handlers = {}) {
     wire("#title-exhibition", handlers.onExhibition);
     wire("#title-arena", handlers.onArena);
 
+    // Mode picker. Purely presentational here — it reports the choice upward
+    // and never starts a game itself, so the CTA stays the single way in.
+    const modeButtons = [...rootEl.querySelectorAll(".title-mode")];
+    for (const button of modeButtons) {
+      button.addEventListener("click", () => {
+        try {
+          for (const other of modeButtons) {
+            const selected = other === button;
+            other.classList.toggle("is-selected", selected);
+            other.setAttribute("aria-checked", String(selected));
+          }
+          if (typeof handlers.onModeChange === "function") {
+            handlers.onModeChange(button.dataset.mode);
+          }
+        } catch (error) {
+          if (typeof console !== "undefined") console.warn("Mode change failed.", error);
+        }
+      });
+    }
+
     return true;
   } catch (error) {
     if (typeof console !== "undefined") {

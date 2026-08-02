@@ -1675,3 +1675,106 @@ body.phase-title #exhibition-root .exh-launch {
     opacity: 0.5;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Game modes and ordnance
+--------------------------------------------------------------------------- */
+
+.title-modes {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin: 0 0 16px;
+}
+
+.title-mode {
+  display: grid;
+  gap: 2px;
+  padding: 10px 16px;
+  min-width: 190px;
+  text-align: left;
+  border: 1px solid rgba(220, 230, 235, 0.16);
+  border-radius: 3px;
+  background: rgba(10, 20, 32, 0.55);
+  color: var(--fog-dim);
+  cursor: pointer;
+  transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.title-mode:hover {
+  border-color: rgba(58, 219, 118, 0.4);
+  color: var(--fog);
+}
+
+.title-mode.is-selected {
+  border-color: var(--phosphor);
+  background: rgba(58, 219, 118, 0.09);
+  color: var(--fog);
+}
+
+.title-mode-name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--brass);
+}
+
+.title-mode.is-selected .title-mode-name {
+  color: var(--phosphor);
+}
+
+.title-mode-desc {
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.powerup-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.powerup-buttons .button {
+  margin: 0;
+  flex: 1 1 auto;
+  font-size: 11px;
+  padding: 6px 8px;
+}
+
+.powerup-buttons .button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.powerup-cost {
+  color: var(--brass);
+  font-family: var(--font-mono);
+}
+
+.powerup-sonar.is-armed,
+#powerup-sonar.is-armed {
+  border-color: var(--phosphor);
+  color: var(--phosphor);
+}
+
+.powerup-hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--fog-dim);
+}
+
+/* Sonar results. Deliberately quiet: this is intelligence, not damage, so it
+   must not compete with the hit/miss marks. */
+.cell.is-scanned-ship::after {
+  content: "";
+  position: absolute;
+  inset: 30%;
+  border-radius: 50%;
+  background: var(--brass);
+  opacity: 0.55;
+}
+
+.cell.is-scanned-clear {
+  box-shadow: inset 0 0 0 1px rgba(143, 163, 179, 0.22);
+}

@@ -15,6 +15,16 @@ import { chooseMove as realChooseMove } from "./ai.js";
 import { mountCoach } from "./coach-ui.js";
 import { shipSvg } from "./ships.js";
 import { mountSinkCallout } from "./sink.js";
+import {
+  MODES,
+  POWERUPS,
+  createLoadout,
+  canAfford,
+  spend,
+  applyAirstrike,
+  sonarScan,
+  pointsAvailable,
+} from "./powerups.js";
 import { estimateWinProbability, describeOdds } from "./odds.js";
 import { mountFairness } from "./fairness-ui.js";
 import { mountExhibition } from "./exhibition.js";
@@ -137,6 +147,13 @@ let layout = [];
 let orientation = "horizontal";
 let selectedShipId = FLEET[0].id;
 let placementMessage = "";
+let mode = "classic";
+let loadout = createLoadout();
+// Cells the player has revealed with sonar: "row,col" -> hasShip. Display
+// only; it never feeds the engine or the AI.
+let sonarKnown = new Map();
+// When armed, the next click on the enemy board scans instead of firing.
+let sonarArmed = false;
 let sinkCallout = null;
 // How far through `state.history` the sink callout has already reported.
 let announcedSinks = 0;
@@ -150,6 +167,11 @@ function cacheElements() {
   els.confidenceValue = document.getElementById("confidence-value");
   els.explainPanel = document.getElementById("explain-panel");
   els.shotCount = document.getElementById("shot-count");
+  els.powerups = document.getElementById("powerups");
+  els.powerupPoints = document.getElementById("powerup-points");
+  els.powerupAirstrike = document.getElementById("powerup-airstrike");
+  els.powerupSonar = document.getElementById("powerup-sonar");
+  els.powerupHint = document.getElementById("powerup-hint");
   els.oddsFill = document.getElementById("odds-fill");
   els.oddsPlayer = document.getElementById("odds-player");
   els.oddsAi = document.getElementById("odds-ai");
@@ -469,6 +491,51 @@ function renderShotCount() {
  * a single shot, this is about the whole game. Additive layer — if the
  * estimate fails, the panel falls back to an em dash rather than throwing.
  */
+/**
+ * Ordnance panel. Hidden entirely in CLASSIC, so the mode really is the plain
+ * game rather than the advanced one with buttons greyed out.
+ */
+function renderPowerups() {
+  try {
+    if (!els.powerups) return;
+    els.powerups.hidden = mode !== "advanced";
+    if (mode !== "advanced") return;
+
+    const points = pointsAvailable(state.history, "player", loadout);
+    els.powerupPoints.textContent = `${points} pts`;
+
+    const over = isGameOver(state);
+    const canStrike = !over && !busy && canAfford(state.history, "player", loadout, "airstrike");
+    const canScan = !over && !busy && canAfford(state.history, "player", loadout, "sonar");
+    els.powerupAirstrike.disabled = !canStrike;
+    els.powerupSonar.disabled = !canScan;
+    els.powerupSonar.classList.toggle("is-armed", sonarArmed);
+
+    els.powerupHint.textContent = sonarArmed
+      ? "Sonar armed — click a cell on the bad guys to scan around it."
+      : points < POWERUPS.sonar.cost
+        ? "Earn points by landing hits. Sinking pays a bonus."
+        : "Spend points on ordnance, or keep firing.";
+  } catch {
+    /* additive layer — the turn loop must not care if this fails */
+  }
+}
+
+/** Paints sonar results onto the enemy board. Display only. */
+function renderSonar() {
+  try {
+    if (!els.aiBoard) return;
+    for (const cellEl of els.aiBoard.children) {
+      const key = `${cellEl.dataset.row},${cellEl.dataset.col}`;
+      const known = sonarKnown.get(key);
+      cellEl.classList.toggle("is-scanned-ship", known === true);
+      cellEl.classList.toggle("is-scanned-clear", known === false);
+    }
+  } catch {
+    /* decorative */
+  }
+}
+
 function renderOdds() {
   try {
     const odds = estimateWinProbability(state);
@@ -577,6 +644,7 @@ function render() {
   renderExplain();
   renderShotCount();
   renderOdds();
+  renderPowerups();
   renderStatusLine();
   announceNewSinks();
   renderEndScreen();
@@ -810,8 +878,55 @@ async function takeAiTurn() {
   if (isGameOver(state)) playEffect(state.status === "player_won" ? "victory" : "defeat");
 }
 
+/** Spends points on an airstrike: five random cells, one turn. */
+async function onAirstrike() {
+  if (busy || isGameOver(state) || mode !== "advanced") return;
+  if (!canAfford(state.history, "player", loadout, "airstrike")) return;
+
+  busy = true;
+  sonarArmed = false;
+  els.aiBoard.classList.add("board-locked");
+  try {
+    loadout = spend(loadout, "airstrike");
+    const { newState, results } = applyAirstrike(state, "ai");
+    state = newState;
+    playEffect(results.some((r) => r.result !== "miss") ? "hit" : "miss");
+    render();
+    renderSonar();
+    if (!isGameOver(state)) {
+      await takeAiTurn();
+    }
+  } catch {
+    /* additive: a failed strike must not wedge the turn loop */
+  } finally {
+    busy = false;
+    els.aiBoard.classList.remove("board-locked");
+    render();
+    renderSonar();
+  }
+}
+
 async function onPlayerShot(cell) {
   if (busy || isGameOver(state)) return;
+
+  // A primed sonar consumes this click instead of firing. It reveals but does
+  // not shoot, and it costs the turn — which is what stops it being free.
+  if (sonarArmed) {
+    sonarArmed = false;
+    loadout = spend(loadout, "sonar");
+    for (const found of sonarScan(state, "ai", cell)) {
+      sonarKnown.set(`${found.row},${found.col}`, found.hasShip);
+    }
+    playEffect("rotate");
+    state = { ...state, turn: "ai" };
+    render();
+    renderSonar();
+    await takeAiTurn();
+    render();
+    renderSonar();
+    return;
+  }
+
   if (state.aiBoard.shotsReceived.has(key(cell.row, cell.col))) {
     playEffect("invalid");
     return;
@@ -1023,6 +1138,9 @@ function startBattle() {
   state = createGame(layout);
   phase = "battle";
   announcedSinks = 0;
+  loadout = createLoadout();
+  sonarKnown = new Map();
+  sonarArmed = false;
   busy = false;
   explainOpen = false;
   placementMessage = "";
@@ -1153,6 +1271,11 @@ function init() {
   els.clearFleet.addEventListener("click", clearLayout);
   els.startBattle.addEventListener("click", startBattle);
   els.muteToggle.addEventListener("click", onMuteToggle);
+  els.powerupAirstrike?.addEventListener("click", onAirstrike);
+  els.powerupSonar?.addEventListener("click", () => {
+    sonarArmed = !sonarArmed;
+    render();
+  });
   document.addEventListener("keydown", onKeyDown);
 
   sinkCallout = mountSinkCallout(document.body);
@@ -1176,6 +1299,9 @@ function init() {
       },
       onExhibition: () => openLauncher("#exhibition-root .exh-launch"),
       onArena: () => openLauncher("#title-arena-root .arena-launch"),
+      onModeChange: (next) => {
+        if (MODES.includes(next)) mode = next;
+      },
     });
   } catch (error) {
     console.warn("Title screen unavailable.", error);

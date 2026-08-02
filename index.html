@@ -60,6 +60,31 @@
           <ul id="title-stats" class="title-stats"></ul>
           <p id="title-stats-note" class="title-stats-note"></p>
 
+          <div class="title-modes" role="radiogroup" aria-label="Game mode">
+            <button
+              id="mode-classic"
+              class="title-mode is-selected"
+              type="button"
+              role="radio"
+              aria-checked="true"
+              data-mode="classic"
+            >
+              <span class="title-mode-name">Classic</span>
+              <span class="title-mode-desc">One shot per turn. Pure deduction.</span>
+            </button>
+            <button
+              id="mode-advanced"
+              class="title-mode"
+              type="button"
+              role="radio"
+              aria-checked="false"
+              data-mode="advanced"
+            >
+              <span class="title-mode-name">Advanced</span>
+              <span class="title-mode-desc">Earn points. Spend on airstrikes and sonar.</span>
+            </button>
+          </div>
+
           <div class="title-actions">
             <button id="title-start" class="title-cta" type="button">
               <span>Deploy Your Fleet</span>
@@ -157,6 +182,22 @@
           </div>
 
           <!-- Populated by src/fairness-ui.js via mountFairness() -->
+          <div id="powerups" class="console-block" hidden>
+            <h3>Ordnance</h3>
+            <p id="powerup-points" class="metric">0 pts</p>
+            <div class="powerup-buttons">
+              <button id="powerup-airstrike" class="button button-quiet" type="button">
+                Airstrike <span class="powerup-cost">12</span>
+              </button>
+              <button id="powerup-sonar" class="button button-quiet" type="button">
+                Sonar <span class="powerup-cost">8</span>
+              </button>
+            </div>
+            <p id="powerup-hint" class="powerup-hint">
+              Earn points by landing hits.
+            </p>
+          </div>
+
           <div id="fairness-panel" class="console-block"></div>
 
           <div class="console-block">
